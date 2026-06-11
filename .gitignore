@@ -1,2 +1,8 @@
 # OS
 .DS_Store
+
+# Build outputs
+build/
+
+# Data exploration
+sandbox/

@@ -1,0 +1,13 @@
+# We use an ARG to avoid the "FromPlatformFlagConstDisallowed" warning.
+ARG BUILDPLATFORM=linux/amd64
+FROM --platform=${BUILDPLATFORM} ubuntu:22.04
+
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository ppa:tkchia/build-ia16 && \
+    apt-get update && \
+    apt-get install -y \
+    gcc-ia16-elf \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /project

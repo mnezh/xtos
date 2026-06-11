@@ -4,29 +4,34 @@ XTOS development is divided into progressive phases, each increasing system matu
 
 ---
 
-## Phase 0 — SDK & Simulator (macOS)
+## Phase 0 — DOS SDK & Runtime Foundation
 
 ### Goals
 - Define XTOS API in C89
-- Build SDL-based simulation runtime
-- Implement font, cursor, and framebuffer rendering
-- Create resource toolchain
+- Build with a containerized 8086/DOS toolchain
+- Run and test apps under DOSBox
+- Implement CGA display modes, input polling, and the event queue
+- Implement font, cursor, framebuffer rendering, and invalidation
+- Provide the first Forms + Canvas UI runtime
+- Create the initial font/resource tooling
 
 ### Deliverables
 - XTOS SDK headers
-- SDL runtime
+- DOS-hosted runtime
 - Basic UI toolkit (Form + Canvas)
-- Reference applications
+- Reference applications built as DOS executables
+- Docker/DOSBox development workflow
 
 ---
 
-## Phase 1 — DOS-hosted runtime
+## Phase 1 — Application Runtime
 
 ### Goals
-- Run XTOS under MS-DOS
-- Implement CGA graphics mode system
-- Event system + input handling
-- Application loader
+- Add an application loader and execution API
+- Define runtime packaging conventions
+- Add file and resource access APIs
+- Prototype a shell or launcher
+- Strengthen app/runtime boundaries
 
 ### Constraints
 - Single active application

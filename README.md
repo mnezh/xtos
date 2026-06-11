@@ -4,7 +4,9 @@ XTOS is a retro-inspired, single-task graphical operating system designed for 80
 
 It prioritizes simplicity, determinism, and a clean UI toolkit over modern multitasking or windowing complexity.
 
-XTOS is developed with macOS as the primary host environment and uses an SDL-based simulator for early development.
+XTOS is developed with a containerized DOS toolchain and is run under DOSBox
+during early development. The runtime stays close to the target DOS/CGA
+environment from the start.
 
 ---
 
@@ -35,19 +37,22 @@ XTOS is based on the following principles:
 
 ## Development Phases
 
-### Phase 0 — SDK & Simulator (macOS)
-- SDL-based runtime simulation
+### Phase 0 — DOS SDK & Runtime Foundation
+- Containerized 8086/DOS build toolchain
+- DOSBox-based development and test loop
 - XTOS C API prototype
-- Font and cursor rendering system
-- Resource compiler toolchain
-- Reference apps running on host system
-
-### Phase 1 — DOS-hosted XTOS runtime
-- XTOS runs under DOS as a fullscreen graphical environment
-- CGA framebuffer mode (320×200 / 640×200)
-- Event system + input handling
-- Application loader and execution API
+- CGA framebuffer modes (320x200 / 640x200)
+- Event system + keyboard and mouse input handling
+- Font, cursor, and framebuffer rendering system
 - Initial UI runtime (Forms + Canvas)
+- Reference apps built as DOS executables
+
+### Phase 1 — Application Runtime
+- Application loader and execution API
+- Runtime packaging conventions
+- File and resource access APIs
+- System shell or launcher prototype
+- Stronger app/runtime boundary
 
 ### Phase 2 — UI Framework maturity
 - Stable widget system
@@ -80,20 +85,19 @@ XTOS is based on the following principles:
 
 ```
 xtos/
-├── sdk/ # XTOS C API headers and libraries
+├── xtos/ # Public XTOS C API headers
 ├── runtime/ # Core UI runtime and event system
 ├── kernel/ # DOS-hosted and later native kernel
 ├── apps/ # Reference and system applications
-├── tools/ # Resource compiler, font tools, etc.
-├── simulator/ # SDL-based host environment
+├── tools/ # Font and resource tools
 └── design/ # Architecture and specification documents
 ```
 ---
 
 ## Target Platforms
 
-- Development: macOS (Clang + SDL2)
-- Runtime Phase 1: MS-DOS (8086 real mode)
+- Development: Docker-based ia16 DOS toolchain + DOSBox
+- Runtime Phase 0/1: MS-DOS (8086 real mode)
 - Future: bare metal 8086-compatible systems
 
 ---
@@ -107,3 +111,23 @@ GNU LESSER GENERAL PUBLIC LICENSE Version 2.1
 ## Status
 
 Early design phase. No stable API yet.
+
+## Screenshots
+
+### Control Panel
+
+![Control Panel](docs/screenshots/control-panel.png)
+
+Display mode and palette preferences.
+
+### Font Viewer
+
+![Font Viewer](docs/screenshots/font-viewer.png)
+
+UTF-8 font preview and glyph inspection.
+
+### Widget Showcase
+
+![Widget Showcase](docs/screenshots/widget-showcase.png)
+
+Lists, buttons, labels, focus handling, and mouse interaction.
