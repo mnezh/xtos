@@ -23,7 +23,7 @@ KeyboardHasKey:
     popw %es
     popw %ds
     popw %bp
-    ret
+    lret
 
 KeyboardRead:
     pushw %bp
@@ -41,4 +41,4 @@ KeyboardRead:
     popw %es
     popw %ds
     popw %bp
-    ret
+    lret

@@ -7,6 +7,7 @@
 #define XTOS_KEY_ESCAPE 0x001b
 #define XTOS_KEY_TAB 0x0009
 #define XTOS_KEY_ALT_Q 0x1000
+#define XTOS_KEY_ALT_S 0x1f00
 #define XTOS_KEY_UP 0x4800
 #define XTOS_KEY_DOWN 0x5000
 

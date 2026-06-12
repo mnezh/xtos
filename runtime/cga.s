@@ -9,14 +9,14 @@ CgaSetVideoMode:
     pushw %ds
     pushw %es
 
-    movb 4(%bp), %al
+    movb 6(%bp), %al
     xorb %ah, %ah
     int $0x10
 
     popw %es
     popw %ds
     popw %bp
-    ret
+    lret
 
 CgaSetColors:
     pushw %bp
@@ -26,15 +26,15 @@ CgaSetColors:
 
     movb $0x0b, %ah
     xorb %bh, %bh
-    movb 4(%bp), %bl
+    movb 6(%bp), %bl
     int $0x10
 
     movb $0x0b, %ah
     movb $1, %bh
-    movb 6(%bp), %bl
+    movb 8(%bp), %bl
     int $0x10
 
     popw %es
     popw %ds
     popw %bp
-    ret
+    lret

@@ -203,6 +203,7 @@ int main(void)
     ControlPanelApp.HandleEvent = ControlPanelHandleEvent;
     ControlPanelApp.Draw = ControlPanelDraw;
     ControlPanelApp.Shutdown = ControlPanelShutdown;
+    ControlPanelApp.first_draw_screenshot_path = "control.cga";
 
     return AppRun(&ControlPanelApp);
 }

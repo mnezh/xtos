@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "xtos/system.h"
+#include "display.h"
+#include "system.h"
 
 #define XTOS_CFG_FILE "XTOS.CFG"
 
@@ -47,7 +48,7 @@ static int line_value(const char *line, const char *key, int *value)
     return 1;
 }
 
-int SystemPrefsLoad(SystemPrefs *prefs)
+int RuntimeSystemPrefsLoad(SystemPrefs *prefs)
 {
     FILE *file;
     char line[32];
@@ -83,7 +84,7 @@ int SystemPrefsLoad(SystemPrefs *prefs)
     return loaded;
 }
 
-int SystemPrefsSave(const SystemPrefs *prefs)
+int RuntimeSystemPrefsSave(const SystemPrefs *prefs)
 {
     FILE *file;
     SystemPrefs safe_prefs;
@@ -107,12 +108,12 @@ int SystemPrefsSave(const SystemPrefs *prefs)
     return 1;
 }
 
-const SystemPrefs *SystemPrefsCurrent(void)
+const SystemPrefs *RuntimeSystemPrefsCurrent(void)
 {
     return &current_prefs;
 }
 
-void SystemPrefsApply(const SystemPrefs *prefs)
+void RuntimeSystemPrefsApply(const SystemPrefs *prefs)
 {
     SystemPrefs safe_prefs;
 
@@ -124,7 +125,7 @@ void SystemPrefsApply(const SystemPrefs *prefs)
     prefs_clamp(&safe_prefs);
 
     /* Mode changes reset CGA hardware colors, so apply palette after mode. */
-    DisplaySetMode(safe_prefs.mode);
-    DisplaySetPalette(safe_prefs.palette);
+    RuntimeDisplaySetMode(safe_prefs.mode);
+    RuntimeDisplaySetPalette(safe_prefs.palette);
     current_prefs = safe_prefs;
 }

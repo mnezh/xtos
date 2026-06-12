@@ -1,6 +1,7 @@
 #include "screen.h"
+#include "display.h"
+#include "log.h"
 #include "cursor.h"
-#include "../xtos/display.h"
 #include "../xtos/ui/invalidation.h"
 
 static enum DisplayMode current_display_mode;
@@ -51,7 +52,7 @@ static enum ScreenPaletteId screen_palette_for_display(enum DisplayPalette palet
     return BLACK_ON_WHITE;
 }
 
-void DisplaySetMode(enum DisplayMode mode)
+void RuntimeDisplaySetMode(enum DisplayMode mode)
 {
     if (mode != DISPLAY_MODE_LOW && mode != DISPLAY_MODE_HIGH) {
         mode = DISPLAY_MODE_LOW;
@@ -64,18 +65,19 @@ void DisplaySetMode(enum DisplayMode mode)
     current_display_mode = mode;
     display_mode_set = 1;
     display_palette_set = 0;
+    XTOS_LOG_U16("display_mode", (u16)mode);
     MouseCursorHide();
     ScreenMode(screen_mode_for_display(mode));
     MouseCursorReset();
     InvalidateAll();
 }
 
-enum DisplayMode DisplayCurrentMode(void)
+enum DisplayMode RuntimeDisplayCurrentMode(void)
 {
     return current_display_mode;
 }
 
-void DisplaySetPalette(enum DisplayPalette palette)
+void RuntimeDisplaySetPalette(enum DisplayPalette palette)
 {
     if (palette != DISPLAY_PALETTE_BLACK_ON_WHITE &&
         palette != DISPLAY_PALETTE_WHITE_ON_BLACK &&
@@ -91,12 +93,13 @@ void DisplaySetPalette(enum DisplayPalette palette)
 
     current_display_palette = palette;
     display_palette_set = 1;
+    XTOS_LOG_U16("display_palette", (u16)palette);
     MouseCursorHide();
     ScreenPalette(screen_palette_for_display(palette));
     InvalidateAll();
 }
 
-enum DisplayPalette DisplayCurrentPalette(void)
+enum DisplayPalette RuntimeDisplayCurrentPalette(void)
 {
     return current_display_palette;
 }

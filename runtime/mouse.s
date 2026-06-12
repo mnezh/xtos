@@ -15,7 +15,7 @@ MouseReset:
     popw %es
     popw %ds
     popw %bp
-    ret
+    lret
 
 MouseRead:
     pushw %bp
@@ -30,13 +30,13 @@ MouseRead:
     movw $3, %ax
     int $0x33
 
-    movw 4(%bp), %si
+    movw 6(%bp), %si
     movw %cx, (%si)
 
-    movw 6(%bp), %si
+    movw 8(%bp), %si
     movw %dx, (%si)
 
-    movw 8(%bp), %si
+    movw 10(%bp), %si
     movw %bx, (%si)
 
     movw %bx, %ax
@@ -48,4 +48,4 @@ MouseRead:
     popw %es
     popw %ds
     popw %bp
-    ret
+    lret

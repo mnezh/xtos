@@ -6,6 +6,12 @@
 #define FONT_MONOSPACE 1
 #define FONT_PROPORTIONAL 2
 
+enum FontId {
+    FONT_SYSTEM,
+    FONT_SMALL,
+    FONT_LARGE
+};
+
 typedef struct GlyphMap {
     u16 codepoint;
     u16 glyph_index;
@@ -29,5 +35,6 @@ u16 FontGlyphCount(const Font *font);
 u16 FontCodepointAt(const Font *font, u16 index);
 u8 FontGlyphWidthAt(const Font *font, u16 index);
 u16 FontTextWidth(const Font *font, const char *text);
+const Font *FontGet(enum FontId id);
 
 #endif

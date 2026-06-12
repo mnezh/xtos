@@ -8,6 +8,7 @@ typedef struct Application {
     void (*HandleEvent)(Event *event);
     void (*Draw)(void);
     void (*Shutdown)(void);
+    const char *first_draw_screenshot_path;
 } Application;
 
 int AppRun(Application *app);

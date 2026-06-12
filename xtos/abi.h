@@ -1,0 +1,47 @@
+#ifndef XTOS_ABI_H
+#define XTOS_ABI_H
+
+#include "types.h"
+
+#ifndef XTOS_FAR
+#define XTOS_FAR __far
+#endif
+
+typedef struct XtosPb {
+    u16 opcode;
+    u16 result;
+    u16 XTOS_FAR *int_in;
+    u16 XTOS_FAR *int_out;
+    void XTOS_FAR *addr_in;
+    void XTOS_FAR *addr_out;
+} XtosPb;
+
+enum XtosOpcode {
+    XTOS_OP_PING = 1,
+    XTOS_OP_LOG,
+    XTOS_OP_SCREENSHOT_CGA,
+    XTOS_OP_DISPLAY_SET_MODE,
+    XTOS_OP_DISPLAY_CURRENT_MODE,
+    XTOS_OP_DISPLAY_SET_PALETTE,
+    XTOS_OP_DISPLAY_CURRENT_PALETTE,
+    XTOS_OP_GET_EVENT,
+    XTOS_OP_SYSTEM_PREFS_LOAD,
+    XTOS_OP_SYSTEM_PREFS_SAVE,
+    XTOS_OP_SYSTEM_PREFS_CURRENT,
+    XTOS_OP_SYSTEM_PREFS_APPLY,
+    XTOS_OP_CANVAS_CLEAR,
+    XTOS_OP_CANVAS_CLEAR_RECT,
+    XTOS_OP_CANVAS_RECT,
+    XTOS_OP_CANVAS_DOTTED_RECT,
+    XTOS_OP_CANVAS_FILL_RECT,
+    XTOS_OP_CANVAS_TEXT,
+    XTOS_OP_CANVAS_TEXT_WIDTH,
+    XTOS_OP_CANVAS_PRESENT
+};
+
+#define XTOS_RESULT_OK 0
+#define XTOS_RESULT_UNKNOWN_OPCODE 1
+#define XTOS_RESULT_BAD_PARAMETER 2
+#define XTOS_RESULT_IO_ERROR 3
+
+#endif

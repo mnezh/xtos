@@ -63,12 +63,3 @@ void RuntimePumpEvents(void)
     pump_keyboard();
     RuntimePumpMouse();
 }
-
-int GetEvent(Event *event)
-{
-    if (event == 0) {
-        return 0;
-    }
-
-    return EventGet(event);
-}

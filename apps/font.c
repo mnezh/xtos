@@ -186,6 +186,7 @@ int main(void)
     FontViewerApp.HandleEvent = FontViewerHandleEvent;
     FontViewerApp.Draw = FontViewerDraw;
     FontViewerApp.Shutdown = FontViewerShutdown;
+    FontViewerApp.first_draw_screenshot_path = "font.cga";
 
     return AppRun(&FontViewerApp);
 }

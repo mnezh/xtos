@@ -1,6 +1,7 @@
 #include "screen.h"
 #include "xtos/text.h"
 #include "xtos/ui/font.h"
+#include "xtos/ui/fonts.h"
 
 static u16 screen_step(u8 width)
 {
@@ -82,4 +83,17 @@ u16 FontTextWidth(const Font *font, const char *text)
     }
 
     return width;
+}
+
+const Font *FontGet(enum FontId id)
+{
+    if (id == FONT_SMALL) {
+        return &Font4x6;
+    }
+
+    if (id == FONT_LARGE) {
+        return &Font5x8;
+    }
+
+    return &Font5x7;
 }

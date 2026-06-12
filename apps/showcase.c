@@ -140,6 +140,7 @@ int main(void)
     ShowcaseApp.HandleEvent = ShowcaseHandleEvent;
     ShowcaseApp.Draw = ShowcaseDraw;
     ShowcaseApp.Shutdown = ShowcaseShutdown;
+    ShowcaseApp.first_draw_screenshot_path = "showcase.cga";
 
     return AppRun(&ShowcaseApp);
 }
