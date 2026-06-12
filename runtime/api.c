@@ -1,5 +1,6 @@
 #include "../xtos/display.h"
 #include "../xtos/event.h"
+#include "../xtos/exec.h"
 #include "../xtos/system.h"
 #include "../xtos/ui/canvas.h"
 #include "int60.h"
@@ -174,6 +175,24 @@ int XtosScreenshotCga(const char *path)
     XtosPb pb;
 
     pb.opcode = XTOS_OP_SCREENSHOT_CGA;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = 0;
+    pb.int_out = 0;
+    pb.addr_in = (void XTOS_FAR *)path;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK;
+}
+
+int ExecRequest(const char *path)
+{
+    XtosPb pb;
+
+    if (path == 0 || path[0] == 0) {
+        return 0;
+    }
+
+    pb.opcode = XTOS_OP_EXEC_REQUEST;
     pb.result = XTOS_RESULT_OK;
     pb.int_in = 0;
     pb.int_out = 0;

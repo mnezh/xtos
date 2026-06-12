@@ -88,6 +88,14 @@ XtosInt60Dispatch:
     je .cursor_hide
     cmpw $36, %ax
     je .cursor_reset
+    cmpw $37, %ax
+    je .exec_request
+    cmpw $38, %ax
+    je .exec_get_next
+    cmpw $39, %ax
+    je .exec_clear_next
+    cmpw $40, %ax
+    je .uninstall
     jmp .unknown
 
 .ping:
@@ -548,6 +556,73 @@ XtosInt60Dispatch:
     xorw %ax, %ax
     jmp .set_result
 
+.exec_request:
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    pushw %bx
+    pushw %es:14(%bx)
+    pushw %es:12(%bx)
+    lcall $RuntimeExecRequestFar@OZSEG16, $RuntimeExecRequestFar
+    addw $4, %sp
+    popw %bx
+    call .restore_pb_es
+    cmpw $0, %ax
+    je .bad_parameter
+    xorw %ax, %ax
+    jmp .set_result
+
+.exec_get_next:
+    movw $1, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    call .check_addr_out
+    jc .bad_parameter
+    pushw %bx
+    pushw resident_canvas_args
+    pushw $resident_exec_path
+    lcall $RuntimeExecNext@OZSEG16, $RuntimeExecNext
+    addw $4, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    movw resident_canvas_args, %ax
+    movw %ax, resident_canvas_args+2
+    movw $resident_exec_path, %ax
+    call .copy_near_string_to_addr_out
+    xorw %ax, %ax
+    jmp .set_result
+
+.exec_clear_next:
+    pushw %bx
+    lcall $RuntimeExecClear@OZSEG16, $RuntimeExecClear
+    popw %bx
+    call .restore_pb_es
+    xorw %ax, %ax
+    jmp .set_result
+
+.uninstall:
+    call .check_int_out
+    jc .bad_parameter
+    movw $3, %ax
+    pushw %bx
+    pushw %ax
+    lcall $CgaSetVideoMode@OZSEG16, $CgaSetVideoMode
+    addw $2, %sp
+    lcall $XtosInt60ResidentUninstall@OZSEG16, $XtosInt60ResidentUninstall
+    popw %bx
+    call .restore_pb_es
+    call .write_uninstall_reason
+    cmpw $0, %ax
+    je .uninstall_ok
+    jmp .set_result
+.uninstall_ok:
+    xorw %ax, %ax
+    jmp .set_result
+
 .unknown:
     movw $1, %ax
     jmp .set_result
@@ -632,6 +707,15 @@ XtosInt60Dispatch:
     ret
 
 .write_int_out_word:
+    movw %es:8(%bx), %di
+    movw %es:10(%bx), %dx
+    pushw %es
+    movw %dx, %es
+    movw %ax, %es:(%di)
+    popw %es
+    ret
+
+.write_uninstall_reason:
     movw %es:8(%bx), %di
     movw %es:10(%bx), %dx
     pushw %es
@@ -747,3 +831,5 @@ resident_canvas_args:
     .word 0, 0, 0, 0, 0
 resident_event_temp:
     .word 0, 0, 0, 0, 0
+resident_exec_path:
+    .space 64, 0

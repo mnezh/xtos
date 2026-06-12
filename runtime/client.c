@@ -133,3 +133,72 @@ void XtosRuntimeRestoreTextMode(void)
     pb.addr_out = 0;
     XtosInt60Call(&pb);
 }
+
+int XtosRuntimeUninstall(u16 *reason)
+{
+    XtosPb pb;
+    u16 int_out[1];
+
+    if (!XtosInt60VectorPresent()) {
+        if (reason != 0) {
+            *reason = XTOS_RESULT_BUSY;
+        }
+        return 0;
+    }
+
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_UNINSTALL;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = 0;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    XtosInt60Call(&pb);
+
+    if (reason != 0) {
+        *reason = int_out[0];
+    }
+
+    return pb.result == XTOS_RESULT_OK;
+}
+
+int XtosExecNextApp(char *path, u16 path_size)
+{
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    if (path == 0 || path_size == 0 || !XtosInt60VectorPresent()) {
+        return 0;
+    }
+
+    path[0] = 0;
+    int_in[0] = path_size;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_EXEC_GET_NEXT;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = (void XTOS_FAR *)path;
+    XtosInt60Call(&pb);
+
+    return pb.result == XTOS_RESULT_OK && int_out[0] != 0;
+}
+
+void XtosExecClearNextApp(void)
+{
+    XtosPb pb;
+
+    if (!XtosInt60VectorPresent()) {
+        return;
+    }
+
+    pb.opcode = XTOS_OP_EXEC_CLEAR_NEXT;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = 0;
+    pb.int_out = 0;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    XtosInt60Call(&pb);
+}

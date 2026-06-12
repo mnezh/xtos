@@ -389,20 +389,32 @@ The invalidation API tracks the current dirty rectangle for runtime-owned
 partial redraw. Applications normally invalidate controls or views rather than
 driving redraw orchestration directly.
 
+## Execution API
+
+```c
+int ExecRequest(const char *path);
+```
+
+`ExecRequest()` records a desired next XTOS application in the resident runtime
+and returns nonzero on success. The current app then exits with `AppQuit()`.
+`xtos.com` owns DOS EXEC and launches the requested app as the next sibling
+process. This is synchronous single-task handoff, not multitasking or nested
+child execution.
+
+`ExecRequest(NULL)`, `ExecRequest("")`, and paths of 64 bytes or longer return
+0 and leave any current pending request unchanged. Valid paths are copied during
+the INT 60h call; the runtime does not retain the app's pointer.
+
 ## Placeholder APIs
 
 ```c
-typedef struct ExecHandle {
-    unsigned int id;
-} ExecHandle;
-
 typedef struct FileRef {
     unsigned int id;
 } FileRef;
 ```
 
-`xtos/exec.h` and `xtos/file.h` currently expose placeholder handle types only.
-There are no public execution or file operations yet.
+`xtos/file.h` currently exposes a placeholder handle type only. There are no
+public file operations yet.
 
 ## Design Rules
 

@@ -3,6 +3,7 @@
     .global XtosInt60Install
     .global XtosInt60UseResidentDataSegment
     .global XtosInt60Restore
+    .global XtosInt60ResidentUninstall
     .global XtosInt60Handler
     .global XtosInt60CallResident
     .global XtosInt60RestoreDataSegment
@@ -71,6 +72,52 @@ XtosInt60Restore:
 .restore_done:
     popw %dx
     popw %bx
+    popw %ds
+    popw %bp
+    lret
+
+XtosInt60ResidentUninstall:
+    pushw %bp
+    movw %sp, %bp
+    pushw %ds
+    pushw %es
+    pushw %bx
+    pushw %dx
+
+    cmpw $0, %cs:xtos_int60_use_resident_ds
+    je .uninstall_not_resident
+
+    movb $0x35, %ah
+    movb $0x60, %al
+    int $0x21
+    cmpw $XtosInt60Handler, %bx
+    jne .uninstall_busy
+    movw %cs, %ax
+    movw %es, %dx
+    cmpw %ax, %dx
+    jne .uninstall_busy
+
+    movw %cs:xtos_old_int60_offset_cs, %dx
+    movw %cs:xtos_old_int60_segment_cs, %bx
+    movw %bx, %ds
+    movb $0x25, %ah
+    movb $0x60, %al
+    int $0x21
+    movw $0, %cs:xtos_int60_use_resident_ds
+    xorw %ax, %ax
+    jmp .uninstall_done
+
+.uninstall_busy:
+    movw $5, %ax
+    jmp .uninstall_done
+
+.uninstall_not_resident:
+    movw $4, %ax
+
+.uninstall_done:
+    popw %dx
+    popw %bx
+    popw %es
     popw %ds
     popw %bp
     lret

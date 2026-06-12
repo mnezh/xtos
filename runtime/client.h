@@ -9,5 +9,8 @@ int XtosRuntimeStatus(u16 *magic, u16 *version);
 int XtosRuntimeSelfTest(u16 *magic, u16 *version, u16 *status);
 void XtosRuntimeLog(const char *message);
 void XtosRuntimeRestoreTextMode(void);
+int XtosRuntimeUninstall(u16 *reason);
+int XtosExecNextApp(char *path, u16 path_size);
+void XtosExecClearNextApp(void);
 
 #endif

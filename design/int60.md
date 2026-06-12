@@ -21,6 +21,7 @@ build/font.exe
 build/control.exe
 build/showcase.exe
 build/smoke.exe
+build/launcher.exe
 ```
 
 `xtos.com` is a tiny-model DOS COM supervisor. `runtime.exe` is the first resident INT 60h installer. The apps remain normal MZ executables and still carry transitional in-process runtime services for graphics.
@@ -28,14 +29,34 @@ build/smoke.exe
 Current execution flow:
 
 ```text
+xtos.com
+  -> run runtime.exe
+  -> verify resident runtime through INT 60h PING
+  -> run launcher.exe
+  -> launcher requests a next app with ExecRequest(path)
+  -> launcher exits
+  -> xtos.com reads and clears the resident next-app request
+  -> run requested app as a sibling DOS process
+  -> selected app exits
+  -> run launcher.exe again
+  -> launcher exits without a next-app request
+  -> xtos.com calls resident RESTORE_TEXT_MODE
+  -> xtos.com calls resident UNINSTALL
+  -> xtos.com exits
+```
+
+The development flow is still supported:
+
+```text
 xtos.com app.exe
   -> run runtime.exe
   -> verify resident runtime through INT 60h PING
-  -> run app.exe
+  -> run app.exe once
   -> app verifies resident runtime
   -> app temporarily installs its local full INT 60h handler
   -> app restores the resident INT 60h vector on exit
   -> xtos.com calls resident RESTORE_TEXT_MODE
+  -> xtos.com calls resident UNINSTALL
   -> xtos.com exits
 ```
 
@@ -126,6 +147,8 @@ XTOS_RESULT_OK
 XTOS_RESULT_UNKNOWN_OPCODE
 XTOS_RESULT_BAD_PARAMETER
 XTOS_RESULT_IO_ERROR
+XTOS_RESULT_UNSUPPORTED
+XTOS_RESULT_BUSY
 ```
 
 Public wrappers generally preserve existing public API signatures. For void APIs, failures are not surfaced yet. For APIs returning values, wrappers read from `int_out` or the parameter block result.
@@ -171,6 +194,10 @@ XTOS_OP_MOUSE_PRESENT
 XTOS_OP_CURSOR_SHOW
 XTOS_OP_CURSOR_HIDE
 XTOS_OP_CURSOR_RESET
+XTOS_OP_EXEC_REQUEST
+XTOS_OP_EXEC_GET_NEXT
+XTOS_OP_EXEC_CLEAR_NEXT
+XTOS_OP_UNINSTALL
 ```
 
 Resident `runtime.exe` currently implements only:
@@ -211,11 +238,16 @@ XTOS_OP_MOUSE_PRESENT
 XTOS_OP_CURSOR_SHOW
 XTOS_OP_CURSOR_HIDE
 XTOS_OP_CURSOR_RESET
+XTOS_OP_EXEC_REQUEST
+XTOS_OP_EXEC_GET_NEXT
+XTOS_OP_EXEC_CLEAR_NEXT
+XTOS_OP_UNINSTALL
 ```
 
 The app-local transitional handler still implements Screenshot. Canvas, Font,
-Event/Input, and Cursor opcodes are forwarded to the saved resident vector so
-hardware-facing services run on the resident stack/data path.
+Event/Input, Cursor, and Exec opcodes are forwarded to the saved resident
+vector so hardware-facing services and launcher handoff state run on the
+resident stack/data path.
 
 ## Resident vs Transitional Opcodes
 
@@ -230,6 +262,7 @@ stateful UI services.
 | `XTOS_OP_SELFTEST` | resident | Returns magic, ABI version, and ready status for automated validation. |
 | `XTOS_OP_LOG` | resident | Resident-safe logging does not retain app pointers. |
 | `XTOS_OP_RESTORE_TEXT_MODE` | resident | Restores DOS text mode on supervisor shutdown. |
+| `XTOS_OP_UNINSTALL` | resident | Restores text mode, validates INT 60h ownership, and restores the previous INT 60h vector. Resident memory is not freed yet. |
 | `XTOS_OP_DISPLAY_*` | resident | Resident owns CGA mode/palette state and updates resident Screen state for Canvas. |
 | `XTOS_OP_SYSTEM_PREFS_*` | resident | Resident owns `XTOS.CFG`; app pointers are copied during the INT 60h call only. |
 | `XTOS_OP_CANVAS_*` | resident | Canvas drawing and text rendering run resident-side. App strings are consumed during the call only. |
@@ -238,6 +271,9 @@ stateful UI services.
 | `XTOS_OP_PUMP_EVENTS` | resident | Polls keyboard/mouse hardware and pushes resident queue events. |
 | `XTOS_OP_MOUSE_*` | resident | Owns INT 33h interaction and mouse state. |
 | `XTOS_OP_CURSOR_*` | resident | Owns cursor position, saved background, draw/erase, and visibility. |
+| `XTOS_OP_EXEC_REQUEST` | resident | Stores a single next executable path requested by the current app. |
+| `XTOS_OP_EXEC_GET_NEXT` | resident | Copies the pending next executable path to the supervisor. |
+| `XTOS_OP_EXEC_CLEAR_NEXT` | resident | Clears the pending next executable request. |
 | `XTOS_OP_SCREENSHOT_CGA` | transitional app-local | Captures CGA memory from the app-local runtime. |
 | `FontGet` handles | app-local wrapper over resident fonts | Apps receive opaque handles/IDs and must not dereference built-in font internals. Built-in font data lives in `runtime.exe`. |
 
@@ -255,6 +291,7 @@ SystemPrefsLoad
 SystemPrefsSave
 SystemPrefsCurrent
 SystemPrefsApply
+ExecRequest
 XtosScreenshotCga
 CanvasClear
 CanvasClearRect
@@ -350,6 +387,20 @@ Canvas opcodes use `int_in` for scalar arguments:
 
 Text pointers are consumed immediately by resident code and are not stored.
 
+## Exec Request Conventions
+
+`ExecRequest(path)` is the public app API for launcher-style handoff.
+
+- `path == NULL`: returns 0, pending request unchanged.
+- `path[0] == 0`: returns 0, pending request unchanged.
+- path length >= 64 bytes: returns 0, pending request unchanged.
+- valid nonempty path shorter than 64 bytes: copies the path into resident
+  next-app storage and returns nonzero.
+
+Apps do not DOS EXEC directly. The current app should call `AppQuit()` after a
+successful request. `xtos.com` reads the pending request after the app exits and
+launches the requested executable as a sibling DOS process.
+
 ## Debug Logging
 
 With `XTOS_DEBUG`, logging writes `XTOS.LOG`.
@@ -360,6 +411,9 @@ Current useful log points:
 - selected app wrapper calls, excluding event polling and Canvas drawing
 - resident and transitional mirror display mode and palette changes
 - resident SystemPrefs load/save/apply
+- exec request lifecycle
+- supervisor launch/exit lifecycle
+- uninstall request/result
 - screenshot dump
 - unknown opcode
 - deterministic smoke validation markers with the `[TEST]` prefix
@@ -494,11 +548,12 @@ Current app binaries intentionally still link:
 Current binary size snapshot:
 
 ```text
-runtime.exe   62816
-font.exe      43904
-control.exe   44080
-showcase.exe  43648
-smoke.exe     43984
+runtime.exe   64048
+launcher.exe  43920
+font.exe      44496
+control.exe   44656
+showcase.exe  44256
+smoke.exe     44592
 ```
 
 `ia16-elf-nm` reports these generated DOS binaries as stripped/no-symbol files,
@@ -531,6 +586,7 @@ make validate-build
 Run each app:
 
 ```sh
+make run-xtos
 make run-font
 make run-control
 make run-showcase
@@ -540,6 +596,7 @@ make run-smoke
 The run targets execute:
 
 ```text
+xtos.com
 xtos.com font.exe
 xtos.com control.exe
 xtos.com showcase.exe
@@ -554,6 +611,14 @@ Check:
 - keyboard navigation works
 - mouse movement/clicks work
 - Control Panel preferences load and save
+- `xtos.com` with no argument starts `launcher.exe`
+- launcher buttons request `control.exe`, `showcase.exe`, or `font.exe`
+- after a selected app quits, `launcher.exe` is launched again
+- launcher Exit XTOS returns to `xtos.com`, restores text mode, requests
+  runtime uninstall, and exits
+- `XTOS.LOG` contains `[BOOT] supervisor start`, app/launcher start/exit
+  markers, `[RT] restore text mode`, `[RT] uninstall requested`, and
+  `[RT] uninstall ok` or a failure reason
 - no visible CGA corruption
 - `XTOS.LOG` appears in debug builds
 - first draw writes `<appname>.cga`
@@ -565,8 +630,11 @@ Check:
 
 When automated DOSBox inspection is unavailable, this checklist is the manual validation source of truth.
 
-Runtime unload is deferred. The resident runtime restores text mode but remains
-resident until DOSBox/DOS exits.
+Runtime memory release is deferred. The current uninstall path safely restores
+the previous INT 60h vector when XTOS still owns it. If INT 60h was hooked by
+something else after XTOS, uninstall fails and leaves the resident runtime in
+memory. Even on successful vector uninstall, the TSR memory block remains
+allocated until DOSBox/DOS exits.
 
 ## Current Non-Goals
 

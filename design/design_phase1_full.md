@@ -229,11 +229,18 @@ Runtime provides services.
 
 Runtime does not own application logic.
 
-Current Phase 1A orchestration skeleton:
+Current Phase 1B orchestration skeleton:
 
     xtos.com
       -> runtime.exe installs INT 60h and remains resident
-      -> xtos.com launches app.exe
+      -> xtos.com launches launcher.exe by default
+      -> launcher.exe requests a next app through ExecRequest(path)
+      -> launcher.exe exits
+      -> xtos.com reads the requested next app from the resident runtime
+      -> xtos.com launches the requested app as a sibling DOS process
+      -> the app exits normally through AppQuit()
+      -> xtos.com relaunches launcher.exe
+      -> launcher.exe exits without a next-app request for Exit XTOS
       -> app.exe verifies resident runtime with PING/STATUS
       -> app.exe temporarily installs its transitional in-process INT 60h
          handler for services not yet moved into the resident runtime
@@ -241,6 +248,7 @@ Current Phase 1A orchestration skeleton:
          Cursor calls are forwarded to the resident runtime
       -> app.exe restores the resident INT 60h vector on exit
       -> xtos.com asks the resident runtime to restore text mode
+      -> xtos.com asks the resident runtime to uninstall INT 60h
       -> xtos.com exits
 
 The resident runtime currently proves DOS TSR orchestration and owns Display
@@ -248,6 +256,13 @@ mode/palette, SystemPrefs, Canvas drawing, text rendering, built-in system
 fonts, font metadata, event queue, keyboard polling, mouse polling, and cursor
 ownership. Screenshot, Forms, widgets, invalidation, custom views, and the app
 loop still remain transitional/app-local.
+
+The launcher is a normal XTOS application. It does not DOS EXEC child
+processes itself. It records the desired next executable in the resident
+runtime with `ExecRequest(path)` and then exits. `xtos.com` remains the DOS
+process owner and launches each requested application as a sibling process.
+The supervisor loop is guarded by a launch counter so a broken launcher/app
+cannot relaunch forever.
 
 ---
 
@@ -413,11 +428,12 @@ Applications own:
 Current binary size snapshot:
 
 ```text
-runtime.exe   62816
-font.exe      43904
-control.exe   44080
-showcase.exe  43648
-smoke.exe     43984
+runtime.exe   64048
+launcher.exe  43920
+font.exe      44496
+control.exe   44656
+showcase.exe  44256
+smoke.exe     44592
 ```
 
 The app binaries no longer link built-in font data, Canvas/Text draw backends,
@@ -442,15 +458,60 @@ runtime-to-app callbacks, which Phase 1A explicitly avoids.
 
 ---
 
-# 16. Phase 1B Goals
+# 16. Phase 1B Launcher Architecture
 
-Investigate:
-- runtime residency
-- launcher shell
-- application loading
-- application unloading
+Phase 1B starts with the smallest launcher architecture:
 
-No commitment to implementation details yet.
+    supervisor
+      -> resident runtime
+      -> launcher app
+      -> selected app
+      -> launcher app
+
+Implemented Phase 1B pieces:
+
+- `xtos.com` with no argument runs `launcher.exe`.
+- `xtos.com app.exe` still runs a single app directly for development.
+- `launcher.exe` is a normal XTOS app using Forms/widgets.
+- Public app API `ExecRequest(const char *path)` records a desired next
+  executable in resident runtime state.
+- `xtos.com` reads and clears the next-app request after each child exits.
+- Apps are launched synchronously as sibling DOS processes; there is no nested
+  launcher-to-app DOS EXEC and no multitasking.
+- The supervisor exits after 64 launches as a guard against relaunch loops.
+- On exit, `xtos.com` restores text mode and requests resident INT 60h
+  uninstall.
+
+Normal app exit contract:
+
+- `AppQuit()` exits the current app and returns to its DOS caller.
+- If the caller is `xtos.com` in launcher mode and the exiting app requested a
+  next executable, `xtos.com` runs that executable.
+- If a selected app exits without a next executable request, `xtos.com`
+  relaunches `launcher.exe`.
+- If `launcher.exe` exits without a next executable request, XTOS exits back to
+  DOS after restoring text mode.
+
+`ExecRequest(path)` contract:
+
+- nonempty path shorter than 64 bytes records the pending next executable and
+  returns nonzero
+- `NULL`, empty, or too-long paths return 0
+- failed requests do not alter the current pending request
+
+Runtime uninstall contract:
+
+- `XTOS_OP_UNINSTALL` restores text mode and verifies that INT 60h still points
+  at the resident runtime handler.
+- If the vector is still owned by XTOS, the previous INT 60h vector is restored
+  and the call reports success.
+- If another handler has hooked INT 60h, uninstall fails with a busy result and
+  leaves the runtime resident.
+- Resident memory release is not attempted yet; "uninstall ok" currently means
+  "INT 60h vector restored safely".
+
+Non-goals remain: multitasking, task switching, process manager, runtime-owned
+forms, resources, dynamic discovery, executable metadata, and icons.
 
 ---
 

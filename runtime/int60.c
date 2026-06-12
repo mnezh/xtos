@@ -242,6 +242,34 @@ u16 XtosInt60Dispatch(XtosPb XTOS_FAR *pb)
         status = XtosInt60CallResident(pb);
         break;
 
+    case XTOS_OP_EXEC_REQUEST:
+        if (pb->addr_in == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_EXEC_GET_NEXT:
+        if (pb->int_in == 0 || pb->int_out == 0 || pb->addr_out == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_EXEC_CLEAR_NEXT:
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_UNINSTALL:
+        if (pb->int_out == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
     case XTOS_OP_RESTORE_TEXT_MODE:
         DisplayShutdown();
         XTOS_LOG_PREFIX("[INT60]", "restore_text_mode");

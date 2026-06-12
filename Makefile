@@ -1,4 +1,5 @@
 DOCKER_IMAGE = msdos-builder
+DOCKER_STAMP = $(BUILD_DIR)/.docker-image
 MSDOS_CC = ia16-elf-gcc
 # The active gcc-ia16 toolchain does not provide -mcmodel=large.
 # Medium gives far code calls and is the available Phase 1 step toward
@@ -15,51 +16,66 @@ FONT_EXE = $(BUILD_DIR)/font.exe
 CONTROL_EXE = $(BUILD_DIR)/control.exe
 SHOWCASE_EXE = $(BUILD_DIR)/showcase.exe
 SMOKE_EXE = $(BUILD_DIR)/smoke.exe
+LAUNCHER_EXE = $(BUILD_DIR)/launcher.exe
 FONT_CGA = $(BUILD_DIR)/font.cga
 CONTROL_CGA = $(BUILD_DIR)/control.cga
 SHOWCASE_CGA = $(BUILD_DIR)/showcase.cga
 SMOKE_CGA = $(BUILD_DIR)/smoke.cga
+LAUNCHER_CGA = $(BUILD_DIR)/launcher.cga
 FONT_PNG = $(BUILD_DIR)/font.png
 CONTROL_PNG = $(BUILD_DIR)/control.png
 SHOWCASE_PNG = $(BUILD_DIR)/showcase.png
 SMOKE_PNG = $(BUILD_DIR)/smoke.png
+LAUNCHER_PNG = $(BUILD_DIR)/launcher.png
 RUNTIME_SOURCES = runtime/app.c runtime/client.c runtime/api.c runtime/int60.c runtime/event.c runtime/display.c runtime/system.c runtime/log.c runtime/screenshot.c runtime/text.c runtime/font.c runtime/invalidation.c runtime/mouse.c runtime/cursor.c runtime/ui/form.c runtime/ui/label.c runtime/ui/list.c runtime/ui/button.c runtime/screen.c runtime/int60.s runtime/int60_call.s runtime/cga.s
 RESIDENT_SOURCES = runtime/resident.c runtime/resident_dispatch.s runtime/resident_services.c runtime/resident_log.c runtime/resident_dos.s runtime/client.c runtime/event.c runtime/mouse.c runtime/cursor.c runtime/canvas.c runtime/draw.c runtime/draw_cga.c runtime/draw_text.c runtime/font.c runtime/screen.c runtime/int60.s runtime/int60_call.s runtime/tsr.s runtime/cga.s runtime/keyboard.s runtime/mouse.s $(FONT_SOURCES)
-BOOT_SOURCES = boot/xtos.c runtime/client.c boot/int60_call_tiny.s boot/exec_tiny.s
+BOOT_SOURCES = boot/xtos.c runtime/client.c boot/int60_call_tiny.s boot/exec_tiny.s boot/dos_tiny.s
 FONT_SOURCES = runtime/fonts/font_4x6.c runtime/fonts/font_5x7.c runtime/fonts/font_5x8.c
 FONT_VIEWER_SOURCES = $(FONT_SOURCES)
 
-.PHONY: run-font run-control run-showcase run-smoke validate-build cga-png cga-bmp font-png control-png showcase-png smoke-png clean docker-image
+.PHONY: run-xtos run-launcher run-font run-control run-showcase run-smoke validate-build cga-png cga-bmp launcher-png font-png control-png showcase-png smoke-png clean docker-image
 
-docker-image:
+docker-image: $(DOCKER_STAMP)
+
+$(DOCKER_STAMP): Dockerfile.msdos | $(BUILD_DIR)
 	docker build --platform linux/amd64 -t $(DOCKER_IMAGE) -f Dockerfile.msdos .
+	touch -r Dockerfile.msdos $@
 
 $(BUILD_DIR):
 	mkdir -p $@
 
-$(XTOS_COM): docker-image $(BOOT_SOURCES) | $(BUILD_DIR)
+$(XTOS_COM): $(DOCKER_STAMP) $(BOOT_SOURCES) | $(BUILD_DIR)
 	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
 		$(MSDOS_CC) $(MSDOS_TINY_CFLAGS) -I . -o $@ $(BOOT_SOURCES)
 
-$(RUNTIME_EXE): docker-image $(RESIDENT_SOURCES) | $(BUILD_DIR)
+$(RUNTIME_EXE): $(DOCKER_STAMP) $(RESIDENT_SOURCES) | $(BUILD_DIR)
 	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
 		$(MSDOS_CC) $(MSDOS_CFLAGS) -DXTOS_BUILD_RUNTIME -I . -o $@ $(RESIDENT_SOURCES)
 
-$(FONT_EXE): docker-image apps/font.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
+$(FONT_EXE): $(DOCKER_STAMP) apps/font.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
 	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
 		$(MSDOS_CC) $(MSDOS_CFLAGS) -I . -o $@ apps/font.c $(RUNTIME_SOURCES)
 
-$(CONTROL_EXE): docker-image apps/control.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
+$(CONTROL_EXE): $(DOCKER_STAMP) apps/control.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
 	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
 		$(MSDOS_CC) $(MSDOS_CFLAGS) -I . -o $@ apps/control.c $(RUNTIME_SOURCES)
 
-$(SHOWCASE_EXE): docker-image apps/showcase.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
+$(SHOWCASE_EXE): $(DOCKER_STAMP) apps/showcase.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
 	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
 		$(MSDOS_CC) $(MSDOS_CFLAGS) -I . -o $@ apps/showcase.c $(RUNTIME_SOURCES)
 
-$(SMOKE_EXE): docker-image apps/smoke.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
+$(SMOKE_EXE): $(DOCKER_STAMP) apps/smoke.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
 	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
 		$(MSDOS_CC) $(MSDOS_CFLAGS) -I . -o $@ apps/smoke.c $(RUNTIME_SOURCES)
+
+$(LAUNCHER_EXE): $(DOCKER_STAMP) apps/launcher.c $(RUNTIME_SOURCES) | $(BUILD_DIR)
+	docker run --rm --platform linux/amd64 -v $(shell pwd):/project $(DOCKER_IMAGE) \
+		$(MSDOS_CC) $(MSDOS_CFLAGS) -I . -o $@ apps/launcher.c $(RUNTIME_SOURCES)
+
+run-xtos: $(XTOS_COM) $(RUNTIME_EXE) $(LAUNCHER_EXE) $(FONT_EXE) $(CONTROL_EXE) $(SHOWCASE_EXE)
+	/Applications/DOSBox\ Staging.app/Contents/MacOS/dosbox -noautoexec -c "mount c ." -c "c:" -c "cd build" -c "xtos.com" -c "exit"
+
+run-launcher: run-xtos
 
 run-font: $(XTOS_COM) $(RUNTIME_EXE) $(FONT_EXE)
 	/Applications/DOSBox\ Staging.app/Contents/MacOS/dosbox -noautoexec -c "mount c ." -c "c:" -c "cd build" -c "xtos.com font.exe" -c "exit"
@@ -73,7 +89,7 @@ run-showcase: $(XTOS_COM) $(RUNTIME_EXE) $(SHOWCASE_EXE)
 run-smoke: $(XTOS_COM) $(RUNTIME_EXE) $(SMOKE_EXE)
 	/Applications/DOSBox\ Staging.app/Contents/MacOS/dosbox -noautoexec -c "mount c ." -c "c:" -c "cd build" -c "xtos.com smoke.exe" -c "exit"
 
-validate-build: $(XTOS_COM) $(RUNTIME_EXE) $(FONT_EXE) $(CONTROL_EXE) $(SHOWCASE_EXE) $(SMOKE_EXE)
+validate-build: $(XTOS_COM) $(RUNTIME_EXE) $(LAUNCHER_EXE) $(FONT_EXE) $(CONTROL_EXE) $(SHOWCASE_EXE) $(SMOKE_EXE)
 
 cga-png:
 	tools/cga2bmp.py $(INPUT) $(OUTPUT) --mode $(MODE)
@@ -82,6 +98,8 @@ cga-bmp:
 	tools/cga2bmp.py $(INPUT) $(OUTPUT) --mode $(MODE)
 
 font-png: $(FONT_PNG)
+
+launcher-png: $(LAUNCHER_PNG)
 
 control-png: $(CONTROL_PNG)
 
@@ -92,6 +110,9 @@ smoke-png: run-smoke
 
 $(FONT_PNG): $(FONT_CGA)
 	tools/cga2bmp.py $(FONT_CGA) $@ --mode 320
+
+$(LAUNCHER_PNG): $(LAUNCHER_CGA)
+	tools/cga2bmp.py $(LAUNCHER_CGA) $@ --mode 320
 
 $(CONTROL_PNG): $(CONTROL_CGA)
 	tools/cga2bmp.py $(CONTROL_CGA) $@ --mode 320
