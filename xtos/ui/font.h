@@ -44,9 +44,4 @@ FontId FontIdOf(const Font *font);
 u16 FontTextWidth(const Font *font, const char *text);
 const Font *FontGet(FontId id);
 
-#ifdef XTOS_DEBUG
-void FontDebugSnapshotSelect(const Font *font);
-void FontDebugCheckSelect(const Font *font);
-#endif
-
 #endif

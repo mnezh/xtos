@@ -461,6 +461,65 @@ app-owned state, pointers, or callbacks:
 Moving these would require runtime-to-app callbacks or retained app pointers,
 which remains out of scope for Phase 1A.
 
+## Phase 1A Ownership Audit
+
+Current resident-owned implementation modules:
+
+- built-in font data: `runtime/fonts/font_4x6.c`,
+  `runtime/fonts/font_5x7.c`, `runtime/fonts/font_5x8.c`
+- Canvas/Text draw backend: `runtime/canvas.c`, `runtime/draw.c`,
+  `runtime/draw_cga.c`, `runtime/draw_text.c`
+- keyboard BIOS polling: `runtime/keyboard.s`
+- mouse INT 33h polling: `runtime/mouse.s` plus resident `runtime/mouse.c`
+- cursor backend: resident `runtime/cursor.c`
+- event queue and event pumping: resident `runtime/event.c`
+
+Current app binaries no longer link:
+
+- built-in font data
+- Canvas/Text draw backend
+- keyboard BIOS polling
+- mouse INT 33h polling
+- cursor backend
+
+Current app binaries intentionally still link:
+
+- `runtime/app.c` for `AppRun()` and lifecycle callback dispatch
+- `runtime/ui/form.c`, `label.c`, `list.c`, `button.c` for app-owned UI state
+- `runtime/invalidation.c` for app-owned dirty-region tracking
+- forwarding stubs for Display, SystemPrefs, Canvas, Fonts, Event/Input, and
+  Cursor APIs
+- app source files and custom view callbacks
+
+Current binary size snapshot:
+
+```text
+runtime.exe   62816
+font.exe      43904
+control.exe   44080
+showcase.exe  43648
+smoke.exe     43984
+```
+
+`ia16-elf-nm` reports these generated DOS binaries as stripped/no-symbol files,
+so the ownership audit is based on Makefile link inputs and the generated
+binary size snapshot.
+
+## Deferred to Phase 1B/2
+
+The following are not Phase 1A work:
+
+- runtime-owned Forms/widgets
+- launcher shell and app switching
+- resource compiler or packaged resources
+- custom executable format
+- runtime-owned custom views
+- runtime-to-app callbacks
+
+Custom views remain app-local because they contain `ViewDrawProc` function
+pointers and app-owned `void *data`. Runtime-owned custom views would require a
+new app callback policy and is deferred.
+
 ## Manual DOSBox Validation
 
 Build all apps:

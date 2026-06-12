@@ -53,3 +53,44 @@ int TextNextCodepoint(const char **cursor, u16 *codepoint)
     *cursor = (const char *)(p + 1);
     return 1;
 }
+
+int TextEncodeUtf8(u16 codepoint, char *out, u8 out_size)
+{
+    if (out == 0 || out_size == 0) {
+        return 0;
+    }
+
+    if (codepoint < 0x80) {
+        if (out_size < 2) {
+            out[0] = 0;
+            return 0;
+        }
+
+        out[0] = (char)codepoint;
+        out[1] = 0;
+        return 1;
+    }
+
+    if (codepoint < 0x800) {
+        if (out_size < 3) {
+            out[0] = 0;
+            return 0;
+        }
+
+        out[0] = (char)(0xc0 | (codepoint >> 6));
+        out[1] = (char)(0x80 | (codepoint & 0x3f));
+        out[2] = 0;
+        return 2;
+    }
+
+    if (out_size < 4) {
+        out[0] = 0;
+        return 0;
+    }
+
+    out[0] = (char)(0xe0 | (codepoint >> 12));
+    out[1] = (char)(0x80 | ((codepoint >> 6) & 0x3f));
+    out[2] = (char)(0x80 | (codepoint & 0x3f));
+    out[3] = 0;
+    return 3;
+}

@@ -172,6 +172,7 @@ code points and draws matching bitmap font glyphs.
 #define XTOS_TEXT_REPLACEMENT 0xfffd
 
 int TextNextCodepoint(const char **cursor, u16 *codepoint);
+int TextEncodeUtf8(u16 codepoint, char *out, u8 out_size);
 
 #define FONT_MONOSPACE 1
 #define FONT_PROPORTIONAL 2

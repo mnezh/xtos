@@ -386,7 +386,63 @@ must continue to run.
 
 ---
 
-# 14. Phase 1B Goals
+# 14. Phase 1A Completion Status
+
+Phase 1A is complete at the current checkpoint.
+
+Resident runtime owns:
+
+- Display and CGA mode/palette state
+- SystemPrefs
+- Canvas drawing and text rendering
+- built-in font data and font metadata
+- event queue storage
+- keyboard polling
+- mouse polling
+- cursor save/restore/draw ownership
+- PING, STATUS, SELFTEST, LOG, and RESTORE_TEXT_MODE
+
+Applications own:
+
+- `AppRun()` and lifecycle callback dispatch
+- Forms, Labels, Lists, Buttons, and Views
+- invalidation
+- application state, strings, and business logic
+- custom view callbacks
+
+Current binary size snapshot:
+
+```text
+runtime.exe   62816
+font.exe      43904
+control.exe   44080
+showcase.exe  43648
+smoke.exe     43984
+```
+
+The app binaries no longer link built-in font data, Canvas/Text draw backends,
+keyboard BIOS polling, mouse INT 33h polling, or the cursor backend. They keep
+small public API stubs and app-local UI/lifecycle code.
+
+---
+
+# 15. Deferred to Phase 1B/2
+
+Deferred intentionally:
+
+- runtime-owned Forms/widgets
+- launcher shell and application switching
+- application loading/unloading policy
+- resource compiler or resource package format
+- custom executable formats
+- app-local custom views policy beyond the current callback boundary
+
+Runtime-owned Forms and custom views would require retained app state or
+runtime-to-app callbacks, which Phase 1A explicitly avoids.
+
+---
+
+# 16. Phase 1B Goals
 
 Investigate:
 - runtime residency
@@ -398,7 +454,7 @@ No commitment to implementation details yet.
 
 ---
 
-# 15. Success Criteria
+# 17. Success Criteria
 
 Phase 1A succeeds when:
 
@@ -408,7 +464,7 @@ Phase 1A succeeds when:
 - apps run unchanged
 - architecture remains debuggable
 
-Phase 1A is complete enough to expand resident runtime responsibilities only after:
+Phase 1A reached this state when:
 
 - `xtos.com` exists as the tiny supervisor entry point
 - `runtime.exe` exists as the resident INT 60h installer
@@ -417,11 +473,12 @@ Phase 1A is complete enough to expand resident runtime responsibilities only aft
 - `make smoke-png` generates `build/smoke.png` automatically
 - `XTOS.LOG` contains deterministic `[TEST]` smoke markers
 - existing apps still build and run through `xtos.com`
-- Forms/widgets remain direct until pointer ownership is redesigned
+- resident runtime owns hardware/input/display/rendering services
+- Forms/widgets remain direct because they own app state and callbacks
 
 ---
 
-# 16. Failure Criteria
+# 18. Failure Criteria
 
 Phase 1A is considered off-track if implementation requires:
 

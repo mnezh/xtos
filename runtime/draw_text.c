@@ -273,10 +273,6 @@ void DrawTextInternal(u16 x, u16 y, const Font *font,
         return;
     }
 
-#ifdef XTOS_DEBUG
-    FontDebugCheckSelect(font);
-#endif
-
     vram = text_cga_memory();
     cursor_x = x;
     bytes_per_row = font_bytes_per_row(font);
