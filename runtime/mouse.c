@@ -1,8 +1,12 @@
 #include "cursor.h"
+#include "int60.h"
 #include "mouse.h"
 #include "event.h"
-#include "xtos/display.h"
 #include "xtos/event.h"
+
+#ifdef XTOS_BUILD_RUNTIME
+#define INPUT_DISPLAY_WIDTH 320
+#define INPUT_DISPLAY_HEIGHT 200
 
 static u8 mouse_present;
 static u8 mouse_initialized;
@@ -12,12 +16,12 @@ static u16 last_buttons;
 
 static u16 normalize_x(u16 driver_x)
 {
-    if (driver_x >= DisplayWidth()) {
+    if (driver_x >= INPUT_DISPLAY_WIDTH) {
         driver_x = (u16)(driver_x >> 1);
     }
 
-    if (driver_x >= DisplayWidth()) {
-        driver_x = (u16)(DisplayWidth() - 1);
+    if (driver_x >= INPUT_DISPLAY_WIDTH) {
+        driver_x = (u16)(INPUT_DISPLAY_WIDTH - 1);
     }
 
     return driver_x;
@@ -25,8 +29,8 @@ static u16 normalize_x(u16 driver_x)
 
 static u16 normalize_y(u16 driver_y)
 {
-    if (driver_y >= DisplayHeight()) {
-        driver_y = (u16)(DisplayHeight() - 1);
+    if (driver_y >= INPUT_DISPLAY_HEIGHT) {
+        driver_y = (u16)(INPUT_DISPLAY_HEIGHT - 1);
     }
 
     return driver_y;
@@ -110,3 +114,42 @@ void RuntimePumpMouse(void)
 
     last_buttons = buttons;
 }
+#else
+static void mouse_call(u16 opcode, u16 *out)
+{
+    XtosPb pb;
+    u16 int_out[1];
+
+    int_out[0] = 0;
+    pb.opcode = opcode;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = 0;
+    pb.int_out = out != 0 ? int_out : 0;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    XtosInt60Call(&pb);
+
+    if (out != 0) {
+        *out = int_out[0];
+    }
+}
+
+void RuntimeMouseInit(void)
+{
+    mouse_call(XTOS_OP_MOUSE_INIT, 0);
+}
+
+u8 RuntimeMousePresent(void)
+{
+    u16 present;
+
+    present = 0;
+    mouse_call(XTOS_OP_MOUSE_PRESENT, &present);
+    return (u8)present;
+}
+
+void RuntimePumpMouse(void)
+{
+    mouse_call(XTOS_OP_PUMP_EVENTS, 0);
+}
+#endif

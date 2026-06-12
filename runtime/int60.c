@@ -24,8 +24,6 @@ static const char *copy_far_string(const char XTOS_FAR *text)
 
 u16 XtosInt60Dispatch(XtosPb XTOS_FAR *pb)
 {
-    Event event;
-    Event XTOS_FAR *event_out;
     u16 status;
     SystemPrefs XTOS_FAR *prefs_out;
     const SystemPrefs XTOS_FAR *prefs_in;
@@ -110,11 +108,7 @@ u16 XtosInt60Dispatch(XtosPb XTOS_FAR *pb)
             status = XTOS_RESULT_BAD_PARAMETER;
             break;
         }
-        pb->int_out[0] = (u16)EventGet(&event);
-        if (pb->int_out[0] != 0) {
-            event_out = (Event XTOS_FAR *)pb->addr_out;
-            *event_out = event;
-        }
+        status = XtosInt60CallResident(pb);
         break;
 
     case XTOS_OP_SYSTEM_PREFS_LOAD:
@@ -229,6 +223,22 @@ u16 XtosInt60Dispatch(XtosPb XTOS_FAR *pb)
     case XTOS_OP_FONT_GLYPH_COUNT:
     case XTOS_OP_FONT_CODEPOINT_AT:
     case XTOS_OP_FONT_GLYPH_WIDTH_AT:
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_PUMP_EVENTS:
+    case XTOS_OP_MOUSE_INIT:
+    case XTOS_OP_CURSOR_SHOW:
+    case XTOS_OP_CURSOR_HIDE:
+    case XTOS_OP_CURSOR_RESET:
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_MOUSE_PRESENT:
+        if (pb->int_out == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
         status = XtosInt60CallResident(pb);
         break;
 

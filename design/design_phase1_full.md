@@ -237,16 +237,17 @@ Current Phase 1A orchestration skeleton:
       -> app.exe verifies resident runtime with PING/STATUS
       -> app.exe temporarily installs its transitional in-process INT 60h
          handler for services not yet moved into the resident runtime
-      -> Display, SystemPrefs, Canvas, Text, and Font metadata calls are
-         forwarded to the resident runtime
+      -> Display, SystemPrefs, Canvas, Text, Font metadata, Event/Input, and
+         Cursor calls are forwarded to the resident runtime
       -> app.exe restores the resident INT 60h vector on exit
       -> xtos.com asks the resident runtime to restore text mode
       -> xtos.com exits
 
 The resident runtime currently proves DOS TSR orchestration and owns Display
-mode/palette, SystemPrefs, Canvas drawing, text rendering, and built-in system
-fonts. Event, Screenshot, Forms, widgets, invalidation, custom views, and the
-app loop still remain transitional/app-local.
+mode/palette, SystemPrefs, Canvas drawing, text rendering, built-in system
+fonts, font metadata, event queue, keyboard polling, mouse polling, and cursor
+ownership. Screenshot, Forms, widgets, invalidation, custom views, and the app
+loop still remain transitional/app-local.
 
 ---
 
@@ -280,6 +281,39 @@ the INT 60h call and renders text against resident-owned font data.
 Font Viewer uses resident metadata services for font names, dimensions, glyph
 counts, codepoints, and glyph widths, so it can keep the glyph table without
 walking app-local copies of the built-in fonts.
+
+---
+
+# 10A. Input and Cursor
+
+Current Phase 1A implementation status:
+
+The resident runtime owns hardware-facing input:
+
+- BIOS keyboard polling and XTOS key generation
+- INT 33h mouse polling
+- mouse movement/button transition state
+- event queue storage, head/tail indices, and overflow behavior
+- mouse cursor position, saved background, draw/erase, and visibility
+
+Applications still own the main loop through `AppRun()`. The loop calls
+resident input services and receives copied `Event` values, but the runtime
+does not call back into the app and does not retain app event pointers.
+
+Forms, Labels, Lists, Buttons, Views, invalidation, custom views, and
+application state remain app-local. These objects contain focus state, app
+strings, callback function pointers, and app-owned data.
+
+Remaining migration risks:
+
+- `Application` lifecycle callbacks
+- `ViewDrawProc` custom view callbacks
+- Form focus/action routing
+- app-owned strings and control state
+- invalidation regions tied to app-owned UI
+
+Moving those pieces would reintroduce runtime-to-app callback pressure, so they
+remain intentionally app-local.
 
 ---
 

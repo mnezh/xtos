@@ -1,10 +1,13 @@
 #include "cursor.h"
 #include "draw.h"
+#include "int60.h"
 #include "screen.h"
-#include "xtos/display.h"
 
+#ifdef XTOS_BUILD_RUNTIME
 #define CGA_WIDTH_BYTES 80
 #define CGA_ODD_SCANLINE_OFFSET 0x2000
+#define CURSOR_DISPLAY_WIDTH 320
+#define CURSOR_DISPLAY_HEIGHT 200
 #define CURSOR_WIDTH 8
 #define CURSOR_HEIGHT 8
 #define CURSOR_MAX_BYTES_PER_ROW 4
@@ -84,7 +87,7 @@ static void save_background(void)
     }
 
     for (row = 0; row < CURSOR_HEIGHT; ++row) {
-        if ((u16)(cursor_y + row) >= DisplayHeight()) {
+        if ((u16)(cursor_y + row) >= CURSOR_DISPLAY_HEIGHT) {
             saved_counts[row] = 0;
         } else {
             saved_offsets[row] = (u16)(cga_line_offset((u16)(cursor_y + row)) +
@@ -127,12 +130,12 @@ static void draw_cursor(void)
     u16 col;
 
     for (row = 0; row < CURSOR_HEIGHT; ++row) {
-        if ((u16)(cursor_y + row) >= DisplayHeight()) {
+        if ((u16)(cursor_y + row) >= CURSOR_DISPLAY_HEIGHT) {
             return;
         }
 
         for (col = 0; col < CURSOR_WIDTH; ++col) {
-            if ((u16)(cursor_x + col) < DisplayWidth()) {
+            if ((u16)(cursor_x + col) < CURSOR_DISPLAY_WIDTH) {
                 if (cursor_primary_bits[row] & (0x80 >> col)) {
                     DrawBar((u16)(cursor_x + col), (u16)(cursor_y + row),
                             (u16)(cursor_x + col), (u16)(cursor_y + row),
@@ -149,12 +152,12 @@ static void draw_cursor(void)
 
 void MouseCursorSetPosition(u16 x, u16 y)
 {
-    if (x > (u16)(DisplayWidth() - CURSOR_WIDTH)) {
-        x = (u16)(DisplayWidth() - CURSOR_WIDTH);
+    if (x > (u16)(CURSOR_DISPLAY_WIDTH - CURSOR_WIDTH)) {
+        x = (u16)(CURSOR_DISPLAY_WIDTH - CURSOR_WIDTH);
     }
 
-    if (y > (u16)(DisplayHeight() - CURSOR_HEIGHT)) {
-        y = (u16)(DisplayHeight() - CURSOR_HEIGHT);
+    if (y > (u16)(CURSOR_DISPLAY_HEIGHT - CURSOR_HEIGHT)) {
+        y = (u16)(CURSOR_DISPLAY_HEIGHT - CURSOR_HEIGHT);
     }
 
     if (cursor_visible) {
@@ -195,3 +198,38 @@ void MouseCursorReset(void)
     cursor_visible = 0;
     cursor_saved = 0;
 }
+#else
+static void cursor_call(u16 opcode)
+{
+    XtosPb pb;
+
+    pb.opcode = opcode;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = 0;
+    pb.int_out = 0;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    XtosInt60Call(&pb);
+}
+
+void MouseCursorSetPosition(u16 x, u16 y)
+{
+    (void)x;
+    (void)y;
+}
+
+void MouseCursorShow(void)
+{
+    cursor_call(XTOS_OP_CURSOR_SHOW);
+}
+
+void MouseCursorHide(void)
+{
+    cursor_call(XTOS_OP_CURSOR_HIDE);
+}
+
+void MouseCursorReset(void)
+{
+    cursor_call(XTOS_OP_CURSOR_RESET);
+}
+#endif

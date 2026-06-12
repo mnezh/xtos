@@ -165,6 +165,12 @@ XTOS_OP_FONT_HEIGHT
 XTOS_OP_FONT_GLYPH_COUNT
 XTOS_OP_FONT_CODEPOINT_AT
 XTOS_OP_FONT_GLYPH_WIDTH_AT
+XTOS_OP_PUMP_EVENTS
+XTOS_OP_MOUSE_INIT
+XTOS_OP_MOUSE_PRESENT
+XTOS_OP_CURSOR_SHOW
+XTOS_OP_CURSOR_HIDE
+XTOS_OP_CURSOR_RESET
 ```
 
 Resident `runtime.exe` currently implements only:
@@ -198,11 +204,18 @@ XTOS_OP_FONT_HEIGHT
 XTOS_OP_FONT_GLYPH_COUNT
 XTOS_OP_FONT_CODEPOINT_AT
 XTOS_OP_FONT_GLYPH_WIDTH_AT
+XTOS_OP_GET_EVENT
+XTOS_OP_PUMP_EVENTS
+XTOS_OP_MOUSE_INIT
+XTOS_OP_MOUSE_PRESENT
+XTOS_OP_CURSOR_SHOW
+XTOS_OP_CURSOR_HIDE
+XTOS_OP_CURSOR_RESET
 ```
 
-The app-local transitional handler still implements Event and Screenshot. Canvas
-opcodes are forwarded to the saved resident vector so drawing and text rendering
-run on the resident stack/data path.
+The app-local transitional handler still implements Screenshot. Canvas, Font,
+Event/Input, and Cursor opcodes are forwarded to the saved resident vector so
+hardware-facing services run on the resident stack/data path.
 
 ## Resident vs Transitional Opcodes
 
@@ -221,7 +234,10 @@ stateful UI services.
 | `XTOS_OP_SYSTEM_PREFS_*` | resident | Resident owns `XTOS.CFG`; app pointers are copied during the INT 60h call only. |
 | `XTOS_OP_CANVAS_*` | resident | Canvas drawing and text rendering run resident-side. App strings are consumed during the call only. |
 | `XTOS_OP_FONT_*` | resident | Built-in font metadata and glyph enumeration for app UI and Font Viewer. |
-| `XTOS_OP_GET_EVENT` | transitional app-local | Event polling remains app-local in Phase 1A. |
+| `XTOS_OP_GET_EVENT` | resident | Pops from the resident event queue and copies one `Event` to app memory during the call. |
+| `XTOS_OP_PUMP_EVENTS` | resident | Polls keyboard/mouse hardware and pushes resident queue events. |
+| `XTOS_OP_MOUSE_*` | resident | Owns INT 33h interaction and mouse state. |
+| `XTOS_OP_CURSOR_*` | resident | Owns cursor position, saved background, draw/erase, and visibility. |
 | `XTOS_OP_SCREENSHOT_CGA` | transitional app-local | Captures CGA memory from the app-local runtime. |
 | `FontGet` handles | app-local wrapper over resident fonts | Apps receive opaque handles/IDs and must not dereference built-in font internals. Built-in font data lives in `runtime.exe`. |
 
@@ -256,6 +272,26 @@ Widget APIs such as Label, List, Button, and View also remain direct in Phase 1A
 for the same reason: they own or reference mutable app-side state and may
 involve app-provided view draw functions. Their drawing calls now cross through
 resident Canvas services.
+
+## Input and Cursor Ownership
+
+Hardware-facing input is resident-owned in the current Phase 1A checkpoint:
+
+- the event queue storage, head/tail indices, and overflow behavior live in
+  `runtime.exe`
+- keyboard polling and XTOS key generation use resident BIOS INT 16h calls
+- mouse polling and button transition tracking use resident INT 33h calls
+- cursor position, saved background, draw/erase, and visibility live in
+  `runtime.exe`
+
+`AppRun()` remains app-local. It still owns lifecycle callback dispatch and the
+main event loop shape, but its input/cursor calls are forwarding stubs. Apps
+receive copied `Event` values only; resident code does not retain app event
+pointers.
+
+Mouse cursor drawing executes resident-side. App binaries keep only small cursor
+forwarding stubs and no longer link keyboard BIOS polling, mouse INT 33h
+polling, or low-level draw/text implementation objects.
 
 ## Font Ownership
 
@@ -408,6 +444,22 @@ build/XTOS.LOG
 
 Use `docs/screenshots/` for checked-in visual baselines when a screenshot is
 promoted to a regression reference.
+
+## Remaining Migration Risks
+
+The following systems intentionally remain app-local because they contain
+app-owned state, pointers, or callbacks:
+
+- `Application` lifecycle callbacks: `Init`, `HandleEvent`, `Draw`, and
+  `Shutdown`
+- `Form` focus state, selected controls, and action routing
+- `ViewDrawProc` custom view callbacks and their `void *data`
+- Labels, Lists, Buttons, and Views, which store app strings and mutable UI
+  state
+- invalidation state, which tracks app-owned dirty UI regions
+
+Moving these would require runtime-to-app callbacks or retained app pointers,
+which remains out of scope for Phase 1A.
 
 ## Manual DOSBox Validation
 

@@ -30,6 +30,8 @@ XtosInt60Dispatch:
     je .display_set_palette
     cmpw $7, %ax
     je .display_current_palette
+    cmpw $8, %ax
+    je .get_event
     cmpw $9, %ax
     je .prefs_load
     cmpw $10, %ax
@@ -74,6 +76,18 @@ XtosInt60Dispatch:
     je .font_codepoint_at
     cmpw $30, %ax
     je .font_glyph_width_at
+    cmpw $31, %ax
+    je .pump_events
+    cmpw $32, %ax
+    je .mouse_init
+    cmpw $33, %ax
+    je .mouse_present
+    cmpw $34, %ax
+    je .cursor_show
+    cmpw $35, %ax
+    je .cursor_hide
+    cmpw $36, %ax
+    je .cursor_reset
     jmp .unknown
 
 .ping:
@@ -131,6 +145,25 @@ XtosInt60Dispatch:
     popw %bx
     call .restore_pb_es
     call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.get_event:
+    call .check_addr_out
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw $resident_event_temp
+    lcall $EventGet@OZSEG16, $EventGet
+    addw $2, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    cmpw $0, %ax
+    je .get_event_done
+    call .copy_event_to_addr_out
+.get_event_done:
     xorw %ax, %ax
     jmp .set_result
 
@@ -464,6 +497,57 @@ XtosInt60Dispatch:
     xorw %ax, %ax
     jmp .set_result
 
+.pump_events:
+    pushw %bx
+    lcall $RuntimePumpEvents@OZSEG16, $RuntimePumpEvents
+    popw %bx
+    call .restore_pb_es
+    xorw %ax, %ax
+    jmp .set_result
+
+.mouse_init:
+    pushw %bx
+    lcall $RuntimeMouseInit@OZSEG16, $RuntimeMouseInit
+    popw %bx
+    call .restore_pb_es
+    xorw %ax, %ax
+    jmp .set_result
+
+.mouse_present:
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    lcall $RuntimeMousePresent@OZSEG16, $RuntimeMousePresent
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.cursor_show:
+    pushw %bx
+    lcall $MouseCursorShow@OZSEG16, $MouseCursorShow
+    popw %bx
+    call .restore_pb_es
+    xorw %ax, %ax
+    jmp .set_result
+
+.cursor_hide:
+    pushw %bx
+    lcall $MouseCursorHide@OZSEG16, $MouseCursorHide
+    popw %bx
+    call .restore_pb_es
+    xorw %ax, %ax
+    jmp .set_result
+
+.cursor_reset:
+    pushw %bx
+    lcall $MouseCursorReset@OZSEG16, $MouseCursorReset
+    popw %bx
+    call .restore_pb_es
+    xorw %ax, %ax
+    jmp .set_result
+
 .unknown:
     movw $1, %ax
     jmp .set_result
@@ -638,8 +722,28 @@ XtosInt60Dispatch:
     popw %es
     ret
 
+.copy_event_to_addr_out:
+    movw %es:16(%bx), %di
+    movw %es:18(%bx), %dx
+    pushw %es
+    movw %dx, %es
+    movw resident_event_temp, %ax
+    movw %ax, %es:(%di)
+    movw resident_event_temp+2, %ax
+    movw %ax, %es:2(%di)
+    movw resident_event_temp+4, %ax
+    movw %ax, %es:4(%di)
+    movw resident_event_temp+6, %ax
+    movw %ax, %es:6(%di)
+    movw resident_event_temp+8, %ax
+    movw %ax, %es:8(%di)
+    popw %es
+    ret
+
     .data
 resident_prefs_temp:
     .word 0
 resident_canvas_args:
+    .word 0, 0, 0, 0, 0
+resident_event_temp:
     .word 0, 0, 0, 0, 0
