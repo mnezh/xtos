@@ -3,7 +3,7 @@
 #include "xtos/event.h"
 #include "xtos/system.h"
 #include "xtos/ui/canvas.h"
-#include "xtos/ui/fonts.h"
+#include "xtos/ui/font.h"
 #include "xtos/ui/form.h"
 
 #define MAX_MODE_ITEMS 4
@@ -27,7 +27,7 @@ static const char *status_text;
 static u16 button_right_for(u16 left, const char *text)
 {
     return (u16)(left + UI_BUTTON_PAD_X +
-                 CanvasTextWidth(&Font4x6, text) +
+                 CanvasTextWidth(FontGet(FONT_SMALL), text) +
                  UI_BUTTON_PAD_X - 1);
 }
 
@@ -110,22 +110,22 @@ static void ControlPanelInit(void)
     apply_right = button_right_for(7, "Apply");
     save_left = (u16)(apply_right + UI_GAP + 1);
 
-    FormInit(&MainForm, "Control Panel", &Font5x7);
-    LabelInit(&ModeLabel, 9, 6, &Font4x6, "Display Mode",
+    FormInit(&MainForm, "Control Panel", FontGet(FONT_SYSTEM));
+    LabelInit(&ModeLabel, 9, 6, FontGet(FONT_SMALL), "Display Mode",
               CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&PaletteLabel, 129, 6, &Font4x6, "Palette",
+    LabelInit(&PaletteLabel, 129, 6, FontGet(FONT_SMALL), "Palette",
               CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&StatusLabel, 7, 176, &Font4x6, "",
+    LabelInit(&StatusLabel, 7, 176, FontGet(FONT_SMALL), "",
               CANVAS_EXTRA_1_ON_BACKGROUND);
     ButtonInit(&ApplyButton, ACTION_APPLY, 7, 158, apply_right, 170,
-               &Font4x6, "Apply");
+               FontGet(FONT_SMALL), "Apply");
     ButtonInit(&SaveButton, ACTION_SAVE, save_left, 158,
                button_right_for(save_left, "Save"), 170,
-               &Font4x6, "Save");
+               FontGet(FONT_SMALL), "Save");
 
-    ListInit(&ModeList, 7, 14, 104, &Font4x6, mode_items,
+    ListInit(&ModeList, 7, 14, 104, FontGet(FONT_SMALL), mode_items,
              DisplayModeCount());
-    ListInit(&PaletteList, 127, 14, 144, &Font4x6, palette_items,
+    ListInit(&PaletteList, 127, 14, 144, FontGet(FONT_SMALL), palette_items,
              DisplayPaletteCount());
     ListSetSelected(&ModeList, mode_index_for(prefs->mode));
     ListSetSelected(&PaletteList, palette_index_for(prefs->palette));
@@ -146,6 +146,7 @@ static void apply_selected(void)
 
     selected_prefs(&prefs);
     SystemPrefsApply(&prefs);
+    FormInvalidateAll(&MainForm);
     set_status("Settings applied");
 }
 
@@ -155,6 +156,7 @@ static void save_selected(void)
 
     selected_prefs(&prefs);
     SystemPrefsApply(&prefs);
+    FormInvalidateAll(&MainForm);
 
     if (SystemPrefsSave(&prefs)) {
         set_status("Settings saved to XTOS.CFG");

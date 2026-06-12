@@ -117,7 +117,7 @@ void ButtonDraw(Button *button)
             text_right = (u16)(button->right - 3);
         }
 
-        underline_y = (u16)(text_y + button->font->height);
+        underline_y = (u16)(text_y + FontHeight(button->font));
 
         if (underline_y < button->bottom) {
             CanvasFillRect(text_x, underline_y, text_right, underline_y,

@@ -1,7 +1,8 @@
 #include "xtos/app.h"
 #include "xtos/display.h"
 #include "xtos/event.h"
-#include "xtos/ui/fonts.h"
+#include "xtos/ui/canvas.h"
+#include "xtos/ui/font.h"
 #include "xtos/ui/form.h"
 
 #define ACTION_RESET 1
@@ -36,7 +37,7 @@ static const char *cheeses[] = {
 static u16 button_right_for(u16 left, const char *text)
 {
     return (u16)(left + UI_BUTTON_PAD_X +
-                 CanvasTextWidth(&Font4x6, text) +
+                 CanvasTextWidth(FontGet(FONT_SMALL), text) +
                  UI_BUTTON_PAD_X - 1);
 }
 
@@ -74,24 +75,24 @@ static void ShowcaseInit(void)
     approve_right = button_right_for(7, "Approve");
     reset_left = (u16)(approve_right + UI_GAP + 1);
 
-    FormInit(&MainForm, "Widget Showcase", &Font5x7);
-    LabelInit(&FruitLabel, 9, 6, &Font4x6, "Fruits",
+    FormInit(&MainForm, "Widget Showcase", FontGet(FONT_SYSTEM));
+    LabelInit(&FruitLabel, 9, 6, FontGet(FONT_SMALL), "Fruits",
               CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&CheeseLabel, 129, 6, &Font4x6, "Cheese",
+    LabelInit(&CheeseLabel, 129, 6, FontGet(FONT_SMALL), "Cheese",
               CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&StatusLabel, 7, 176, &Font4x6, "",
+    LabelInit(&StatusLabel, 7, 176, FontGet(FONT_SMALL), "",
               CANVAS_EXTRA_1_ON_BACKGROUND);
 
-    ListInit(&FruitList, 7, 14, 104, &Font4x6, fruits, 4);
-    ListInit(&CheeseList, 127, 14, 144, &Font4x6, cheeses, 6);
+    ListInit(&FruitList, 7, 14, 104, FontGet(FONT_SMALL), fruits, 4);
+    ListInit(&CheeseList, 127, 14, 144, FontGet(FONT_SMALL), cheeses, 6);
     ListSetSelected(&FruitList, 0);
     ListSetSelected(&CheeseList, 1);
 
     ButtonInit(&ApproveButton, ACTION_APPROVE, 7, 158, approve_right, 170,
-               &Font4x6, "Approve");
+               FontGet(FONT_SMALL), "Approve");
     ButtonInit(&ResetButton, ACTION_RESET, reset_left, 158,
                button_right_for(reset_left, "Reset"), 170,
-               &Font4x6, "Reset");
+               FontGet(FONT_SMALL), "Reset");
 
     FormAddLabel(&MainForm, &FruitLabel);
     FormAddLabel(&MainForm, &CheeseLabel);

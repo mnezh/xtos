@@ -25,7 +25,10 @@ void CanvasFillRect(u16 left, u16 top, u16 right, u16 bottom,
                     enum CanvasColorRole role);
 void CanvasText(u16 x, u16 y, const Font *font,
                 enum CanvasColorRole role, const char *text);
+void CanvasTextId(u16 x, u16 y, FontId font_id,
+                  enum CanvasColorRole role, const char *text);
 u16 CanvasTextWidth(const Font *font, const char *text);
+u16 CanvasTextWidthId(FontId font_id, const char *text);
 void CanvasPresent(void);
 
 #endif

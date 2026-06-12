@@ -6,7 +6,9 @@
 #define FONT_MONOSPACE 1
 #define FONT_PROPORTIONAL 2
 
-enum FontId {
+typedef u16 FontId;
+
+enum FontIdValue {
     FONT_SYSTEM,
     FONT_SMALL,
     FONT_LARGE
@@ -34,7 +36,17 @@ typedef struct Font {
 u16 FontGlyphCount(const Font *font);
 u16 FontCodepointAt(const Font *font, u16 index);
 u8 FontGlyphWidthAt(const Font *font, u16 index);
+u8 FontWidth(const Font *font);
+u8 FontHeight(const Font *font);
+u8 FontCount(void);
+const char *FontName(const Font *font);
+FontId FontIdOf(const Font *font);
 u16 FontTextWidth(const Font *font, const char *text);
-const Font *FontGet(enum FontId id);
+const Font *FontGet(FontId id);
+
+#ifdef XTOS_DEBUG
+void FontDebugSnapshotSelect(const Font *font);
+void FontDebugCheckSelect(const Font *font);
+#endif
 
 #endif

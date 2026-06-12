@@ -2,8 +2,9 @@
 #include "xtos/display.h"
 #include "xtos/event.h"
 #include "xtos/ui/canvas.h"
-#include "xtos/ui/fonts.h"
+#include "xtos/ui/font.h"
 #include "xtos/ui/form.h"
+#include "runtime/log.h"
 
 #define FONT_COUNT 3
 #define PREVIEW_LEFT 95
@@ -21,17 +22,9 @@ static Label FontListLabel;
 static View PreviewView;
 static View GlyphView;
 
-static const Font *fonts[FONT_COUNT] = {
-    &Font4x6,
-    &Font5x7,
-    &Font5x8
-};
+static const Font *fonts[FONT_COUNT];
 
-static const char *font_names[FONT_COUNT] = {
-    "X11 4x6",
-    "X11 5x7",
-    "X11 5x8"
-};
+static const char *font_names[FONT_COUNT];
 
 static void draw_printable_glyphs(View *view, const Font *font)
 {
@@ -60,10 +53,10 @@ static void draw_printable_glyphs(View *view, const Font *font)
 
         if ((u16)(x + advance) >= view->right) {
             x = view->left;
-            y = (u16)(y + font->height + 2);
+            y = (u16)(y + FontHeight(font) + 2);
         }
 
-        if ((u16)(y + font->height) >= view->bottom) {
+        if ((u16)(y + FontHeight(font)) >= view->bottom) {
             return;
         }
 
@@ -100,11 +93,11 @@ static void draw_preview_view(View *view, const Rect *dirty, void *data)
     CanvasText(view->left, y, font,
                CANVAS_PRIMARY_FOREGROUND,
                "The quick brown fox");
-    y = (u16)(y + font->height + 2);
+    y = (u16)(y + FontHeight(font) + 2);
     CanvasText(view->left, y, font,
                CANVAS_PRIMARY_FOREGROUND,
                "Příliš žluťoučký kůň úpěl ďábelské ódy");
-    y = (u16)(y + font->height + 2);
+    y = (u16)(y + FontHeight(font) + 2);
     CanvasText(view->left, y, font,
                CANVAS_PRIMARY_FOREGROUND,
                "Эй, жлоб! Где туз? Прячь юных съёмщиц в шкаф.");
@@ -120,10 +113,25 @@ static void draw_glyph_view(View *view, const Rect *dirty, void *data)
 
 static void FontViewerInit(void)
 {
-    FormInit(&MainForm, "Font Viewer", &Font5x7);
-    LabelInit(&FontListLabel, 9, 6, &Font4x6, "Select font:",
+    fonts[0] = FontGet(FONT_SMALL);
+    fonts[1] = FontGet(FONT_SYSTEM);
+    fonts[2] = FontGet(FONT_LARGE);
+    font_names[0] = FontName(fonts[0]);
+    font_names[1] = FontName(fonts[1]);
+    font_names[2] = FontName(fonts[2]);
+    XTOS_LOG_PREFIX("[FONTAPP]", "names ready");
+
+#ifdef XTOS_DEBUG
+    FontDebugSnapshotSelect(fonts[0]);
+#endif
+
+    XTOS_LOG_PREFIX("[FONTAPP]", "form init begin");
+    FormInit(&MainForm, "Font Viewer", FontGet(FONT_SYSTEM));
+    LabelInit(&FontListLabel, 9, 6, FontGet(FONT_SMALL), "Select font:",
               CANVAS_PRIMARY_FOREGROUND);
-    ListInit(&FontList, 7, 14, 84, &Font4x6, font_names, FONT_COUNT);
+    ListInit(&FontList, 7, 14, 84, FontGet(FONT_SMALL), font_names,
+             FONT_COUNT);
+    XTOS_LOG_PREFIX("[FONTAPP]", "form init done");
     ViewInit(&PreviewView, PREVIEW_LEFT, PREVIEW_TOP,
              PREVIEW_RIGHT, PREVIEW_BOTTOM, draw_preview_view, 0);
     ViewInit(&GlyphView, GLYPH_LEFT, GLYPH_TOP,

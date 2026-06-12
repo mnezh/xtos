@@ -10,9 +10,46 @@ The current IA-16 toolchain does not support `-mcmodel=large`. XTOS therefore bu
 -mcmodel=medium
 ```
 
-Medium model gives far code calls. Runtime service data crossings use explicit `__far` pointers in the parameter block. Applications and runtime are still linked into one DOS MZ executable in Phase 1A.
+Medium model gives far code calls. Runtime service data crossings use explicit `__far` pointers in the parameter block.
+
+The current build now produces:
+
+```text
+build/xtos.com
+build/runtime.exe
+build/font.exe
+build/control.exe
+build/showcase.exe
+build/smoke.exe
+```
+
+`xtos.com` is a tiny-model DOS COM supervisor. `runtime.exe` is the first resident INT 60h installer. The apps remain normal MZ executables and still carry transitional in-process runtime services for graphics.
+
+Current execution flow:
+
+```text
+xtos.com app.exe
+  -> run runtime.exe
+  -> verify resident runtime through INT 60h PING
+  -> run app.exe
+  -> app verifies resident runtime
+  -> app temporarily installs its local full INT 60h handler
+  -> app restores the resident INT 60h vector on exit
+  -> xtos.com calls resident RESTORE_TEXT_MODE
+  -> xtos.com exits
+```
+
+This is an orchestration skeleton, not the final split runtime.
 
 ## Parameter Block
+
+The current ABI version is:
+
+```c
+#define XTOS_ABI_VERSION 1
+```
+
+Runtime and app stubs include the same `xtos/abi.h` header in Phase 1A. There is no separate loader-time negotiation yet.
 
 The public ABI type is `XtosPb` in `xtos/abi.h`:
 
@@ -50,6 +87,35 @@ INT 60h
 The INT 60h handler saves registers, pushes the far pointer as a C argument, calls `XtosInt60Dispatch`, restores registers, and returns with `iret`.
 
 IA-16 far pointer arguments are passed as offset then segment on the stack. The hand-written assembly was checked against generated `gcc-ia16` assembly for `-mcmodel=medium`.
+
+## Resident Dispatcher Invariants
+
+These are hard ABI rules for Phase 1A resident services:
+
+- The resident INT 60h handler must switch to a resident-owned SS:SP before
+  calling resident C code.
+- Resident C must never run on the app's SS. The IA-16 medium-model compiler
+  may address globals through SS, so using the app stack segment can corrupt
+  app memory even when DS is correct.
+- The resident data segment must be captured from
+  `__ia16_near_data_segment`, not from the incidental DS value live at install
+  time.
+- The resident handler must restore the caller's SS:SP, DS, ES, and preserved
+  general registers before `iret`.
+- The resident handler must return the dispatcher status in AX after restoring
+  caller state.
+- The resident dispatcher must preserve the parameter-block pointer and any
+  live registers it needs after calling resident C services. In particular,
+  BX cannot be assumed to survive a C call.
+- Application pointers from the parameter block are valid only during the
+  service call and must not be retained by resident code.
+- The app-local transitional INT 60h handler intentionally does not
+  stack-switch. It continues to run app-local services on the app stack because
+  those services operate on app-owned state.
+
+This stack switch is not a runtime-to-app callback mechanism. It is only the
+resident interrupt entry discipline required before resident-owned C services
+execute.
 
 ## Results
 
@@ -89,7 +155,75 @@ XTOS_OP_CANVAS_FILL_RECT
 XTOS_OP_CANVAS_TEXT
 XTOS_OP_CANVAS_TEXT_WIDTH
 XTOS_OP_CANVAS_PRESENT
+XTOS_OP_RESTORE_TEXT_MODE
+XTOS_OP_RUNTIME_STATUS
+XTOS_OP_SELFTEST
+XTOS_OP_FONT_COUNT
+XTOS_OP_FONT_NAME
+XTOS_OP_FONT_WIDTH
+XTOS_OP_FONT_HEIGHT
+XTOS_OP_FONT_GLYPH_COUNT
+XTOS_OP_FONT_CODEPOINT_AT
+XTOS_OP_FONT_GLYPH_WIDTH_AT
 ```
+
+Resident `runtime.exe` currently implements only:
+
+```text
+XTOS_OP_PING
+XTOS_OP_LOG
+XTOS_OP_DISPLAY_SET_MODE
+XTOS_OP_DISPLAY_CURRENT_MODE
+XTOS_OP_DISPLAY_SET_PALETTE
+XTOS_OP_DISPLAY_CURRENT_PALETTE
+XTOS_OP_SYSTEM_PREFS_LOAD
+XTOS_OP_SYSTEM_PREFS_SAVE
+XTOS_OP_SYSTEM_PREFS_CURRENT
+XTOS_OP_SYSTEM_PREFS_APPLY
+XTOS_OP_CANVAS_CLEAR
+XTOS_OP_CANVAS_CLEAR_RECT
+XTOS_OP_CANVAS_RECT
+XTOS_OP_CANVAS_DOTTED_RECT
+XTOS_OP_CANVAS_FILL_RECT
+XTOS_OP_CANVAS_TEXT
+XTOS_OP_CANVAS_TEXT_WIDTH
+XTOS_OP_CANVAS_PRESENT
+XTOS_OP_RESTORE_TEXT_MODE
+XTOS_OP_RUNTIME_STATUS
+XTOS_OP_SELFTEST
+XTOS_OP_FONT_COUNT
+XTOS_OP_FONT_NAME
+XTOS_OP_FONT_WIDTH
+XTOS_OP_FONT_HEIGHT
+XTOS_OP_FONT_GLYPH_COUNT
+XTOS_OP_FONT_CODEPOINT_AT
+XTOS_OP_FONT_GLYPH_WIDTH_AT
+```
+
+The app-local transitional handler still implements Event and Screenshot. Canvas
+opcodes are forwarded to the saved resident vector so drawing and text rendering
+run on the resident stack/data path.
+
+## Resident vs Transitional Opcodes
+
+Phase 1A intentionally has a narrow resident runtime. Apps verify the resident
+runtime first, then install an app-local transitional handler for graphics and
+stateful UI services.
+
+| Opcode | Current owner | Notes |
+| --- | --- | --- |
+| `XTOS_OP_PING` | resident | Returns runtime magic/version. |
+| `XTOS_OP_RUNTIME_STATUS` | resident | Reports whether the resident runtime is ready. |
+| `XTOS_OP_SELFTEST` | resident | Returns magic, ABI version, and ready status for automated validation. |
+| `XTOS_OP_LOG` | resident | Resident-safe logging does not retain app pointers. |
+| `XTOS_OP_RESTORE_TEXT_MODE` | resident | Restores DOS text mode on supervisor shutdown. |
+| `XTOS_OP_DISPLAY_*` | resident | Resident owns CGA mode/palette state and updates resident Screen state for Canvas. |
+| `XTOS_OP_SYSTEM_PREFS_*` | resident | Resident owns `XTOS.CFG`; app pointers are copied during the INT 60h call only. |
+| `XTOS_OP_CANVAS_*` | resident | Canvas drawing and text rendering run resident-side. App strings are consumed during the call only. |
+| `XTOS_OP_FONT_*` | resident | Built-in font metadata and glyph enumeration for app UI and Font Viewer. |
+| `XTOS_OP_GET_EVENT` | transitional app-local | Event polling remains app-local in Phase 1A. |
+| `XTOS_OP_SCREENSHOT_CGA` | transitional app-local | Captures CGA memory from the app-local runtime. |
+| `FontGet` handles | app-local wrapper over resident fonts | Apps receive opaque handles/IDs and must not dereference built-in font internals. Built-in font data lives in `runtime.exe`. |
 
 ## Routed APIs
 
@@ -118,26 +252,67 @@ CanvasPresent
 
 Form APIs remain direct by design. They involve app-owned structs, focus state, views, invalidation, and custom draw function pointers.
 
+Widget APIs such as Label, List, Button, and View also remain direct in Phase 1A
+for the same reason: they own or reference mutable app-side state and may
+involve app-provided view draw functions. Their drawing calls now cross through
+resident Canvas services.
+
+## Font Ownership
+
+The public application-facing API is:
+
+```c
+FontGet(FONT_SMALL)
+FontGet(FONT_SYSTEM)
+FontGet(FONT_LARGE)
+```
+
+The current Phase 1A implementation keeps the public `FontGet()` shape but
+treats returned pointers as app-local opaque handles for built-in resident
+fonts. Apps use helpers such as `FontWidth()`, `FontHeight()`,
+`FontGlyphCount()`, `FontCodepointAt()`, `FontGlyphWidthAt()`, and
+`FontName()` for metadata. Those helpers route through resident `XTOS_OP_FONT_*`
+services.
+
+The real `Font` descriptor still contains near nested pointers:
+
+```c
+const u8 *glyphs;
+const GlyphMap *map;
+const u8 *widths;
+```
+
+Those pointers are now dereferenced only by resident font/text code. Returning a
+raw resident `Font *` to app-local rendering remains forbidden. App-local Forms
+and widgets store the opaque handle only and use metadata services for layout.
+
+The concrete built-in globals `Font4x6`, `Font5x7`, and `Font5x8` are
+resident-owned implementation symbols linked into `runtime.exe`. New
+application UI must not depend on them directly.
+
+Font Viewer uses the resident metadata services to enumerate names, dimensions,
+glyph counts, codepoints, and glyph widths. It still draws the glyph table, but
+it no longer walks app-local built-in font internals.
+
 ## Canvas Parameter Conventions
 
 Canvas opcodes use `int_in` for scalar arguments:
 
 - `CanvasClearRect`: `left, top, right, bottom`
 - `CanvasRect`, `CanvasDottedRect`, `CanvasFillRect`: `left, top, right, bottom, role`
-- `CanvasText`: `x, y, role`
+- `CanvasText`: `x, y, font_id, role`
 
 `CanvasText` uses:
 
-- `addr_in`: `const Font *`
-- `addr_out`: `const char *`
+- `addr_in`: app-owned `const char *`
 
 `CanvasTextWidth` uses:
 
-- `addr_in`: `const Font *`
-- `addr_out`: `const char *`
+- `int_in[0]`: `font_id`
+- `addr_in`: app-owned `const char *`
 - `int_out[0]`: width
 
-These pointers are consumed immediately and are not stored.
+Text pointers are consumed immediately by resident code and are not stored.
 
 ## Debug Logging
 
@@ -147,15 +322,26 @@ Current useful log points:
 
 - app start/shutdown
 - selected app wrapper calls, excluding event polling and Canvas drawing
-- display mode and palette changes
+- resident and transitional mirror display mode and palette changes
+- resident SystemPrefs load/save/apply
 - screenshot dump
 - unknown opcode
+- deterministic smoke validation markers with the `[TEST]` prefix
 
 Canvas drawing is intentionally not logged by default because it is hot-path rendering.
 
+`xtos.com` logs boot/supervisor events with the `[BOOT]` prefix. `runtime.exe`
+logs installation with `[RT]` when file logging is available. Resident INT 60h
+logging uses resident-owned DOS helpers so resident services do not pull in
+hosted stdio state or retain app-owned pointers.
+
+`SystemPrefsCurrent()` keeps the public pointer-returning API, but the INT 60h
+opcode copies resident prefs into an app-local static cache during the call.
+Apps do not receive a resident-owned pointer.
+
 ## Screenshot Workflow
 
-After each bundled app completes its first draw, the runtime captures one raw CGA dump:
+After each bundled app completes its first draw, the transitional app-local runtime captures one raw CGA dump:
 
 ```text
 font.cga
@@ -189,6 +375,40 @@ make cga-bmp INPUT=XTOS.CGA OUTPUT=XTOS.bmp MODE=640
 
 Use `MODE=320` for `DISPLAY_MODE_LOW` and `MODE=640` for `DISPLAY_MODE_HIGH`.
 
+When apps are run by the Makefile targets, DOSBox changes into `build/`, so bundled first-draw captures are expected under `build/`.
+
+For bundled first-draw captures:
+
+```sh
+make font-png
+make control-png
+make showcase-png
+```
+
+These read `build/font.cga`, `build/control.cga`, and `build/showcase.cga` and write matching `.png` files in `build/`.
+
+The noninteractive smoke app is the automated validation path:
+
+```sh
+make run-smoke
+make smoke-png
+```
+
+`make run-smoke` runs `xtos.com smoke.exe` and exits without user input after
+the first draw. `make smoke-png` reads `build/smoke.cga` and writes
+`build/smoke.png`.
+
+Smoke validation produces:
+
+```text
+build/smoke.cga
+build/smoke.png
+build/XTOS.LOG
+```
+
+Use `docs/screenshots/` for checked-in visual baselines when a screenshot is
+promoted to a regression reference.
+
 ## Manual DOSBox Validation
 
 Build all apps:
@@ -203,7 +423,19 @@ Run each app:
 make run-font
 make run-control
 make run-showcase
+make run-smoke
 ```
+
+The run targets execute:
+
+```text
+xtos.com font.exe
+xtos.com control.exe
+xtos.com showcase.exe
+xtos.com smoke.exe
+```
+
+from inside `build/`.
 
 Check:
 
@@ -214,8 +446,16 @@ Check:
 - no visible CGA corruption
 - `XTOS.LOG` appears in debug builds
 - first draw writes `<appname>.cga`
+- `make smoke-png` exits without user input and creates `build/smoke.png`
+- `XTOS.LOG` contains `[TEST] smoke start`, `[TEST] selftest ok`, `[TEST] screenshot written`, and `[TEST] smoke complete`
 - `Alt+S` writes `XTOS.CGA`
 - `tools/cga2bmp.py` converts the dump
+- running an app directly without `xtos.com` prints `This is a XTOS application and cannot run in DOS`
+
+When automated DOSBox inspection is unavailable, this checklist is the manual validation source of truth.
+
+Runtime unload is deferred. The resident runtime restores text mode but remains
+resident until DOSBox/DOS exits.
 
 ## Current Non-Goals
 

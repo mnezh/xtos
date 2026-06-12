@@ -229,6 +229,25 @@ Runtime provides services.
 
 Runtime does not own application logic.
 
+Current Phase 1A orchestration skeleton:
+
+    xtos.com
+      -> runtime.exe installs INT 60h and remains resident
+      -> xtos.com launches app.exe
+      -> app.exe verifies resident runtime with PING/STATUS
+      -> app.exe temporarily installs its transitional in-process INT 60h
+         handler for services not yet moved into the resident runtime
+      -> Display, SystemPrefs, Canvas, Text, and Font metadata calls are
+         forwarded to the resident runtime
+      -> app.exe restores the resident INT 60h vector on exit
+      -> xtos.com asks the resident runtime to restore text mode
+      -> xtos.com exits
+
+The resident runtime currently proves DOS TSR orchestration and owns Display
+mode/palette, SystemPrefs, Canvas drawing, text rendering, and built-in system
+fonts. Event, Screenshot, Forms, widgets, invalidation, custom views, and the
+app loop still remain transitional/app-local.
+
 ---
 
 # 10. Fonts
@@ -237,13 +256,30 @@ System fonts should move into runtime ownership.
 
 Applications acquire fonts through APIs.
 
-Suggested future API:
+Current Phase 1A API:
 
 FontGet(FONT_SYSTEM);
 FontGet(FONT_SMALL);
 FontGet(FONT_LARGE);
 
 Applications should stop embedding font data.
+
+Current Phase 1A implementation status:
+
+Built-in font data is linked into `runtime.exe`, not the bundled app binaries.
+`FontGet()` still returns a `const Font *` for source compatibility, but apps
+must treat that value as an opaque built-in font handle. App-local code must use
+metadata helpers such as `FontName()`, `FontWidth()`, `FontHeight()`,
+`FontGlyphCount()`, `FontCodepointAt()`, and `FontGlyphWidthAt()` instead of
+dereferencing the `Font` internals.
+
+Canvas text calls cross the resident boundary as `font_id` plus an app-owned
+UTF-8 string pointer. The resident runtime copies/reads the string only during
+the INT 60h call and renders text against resident-owned font data.
+
+Font Viewer uses resident metadata services for font names, dimensions, glyph
+counts, codepoints, and glyph widths, so it can keep the glyph table without
+walking app-local copies of the built-in fonts.
 
 ---
 
@@ -305,6 +341,7 @@ Outputs:
 3. Logging.
 4. Screenshot support.
 5. Existing apps remain operational.
+6. Automated smoke validation.
 
 Applications:
 - Control Panel
@@ -336,6 +373,17 @@ Phase 1A succeeds when:
 - screenshots work
 - apps run unchanged
 - architecture remains debuggable
+
+Phase 1A is complete enough to expand resident runtime responsibilities only after:
+
+- `xtos.com` exists as the tiny supervisor entry point
+- `runtime.exe` exists as the resident INT 60h installer
+- resident runtime detection works before apps install transitional handlers
+- `make run-smoke` exits automatically
+- `make smoke-png` generates `build/smoke.png` automatically
+- `XTOS.LOG` contains deterministic `[TEST]` smoke markers
+- existing apps still build and run through `xtos.com`
+- Forms/widgets remain direct until pointer ownership is redesigned
 
 ---
 

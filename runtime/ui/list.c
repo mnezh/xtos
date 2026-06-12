@@ -43,7 +43,7 @@ void ListInit(List *list, u16 x, u16 y, u16 width, const Font *font,
     list->items = items;
     list->count = count;
     list->selected = 0;
-    list->row_height = (u8)(font->height + 2);
+    list->row_height = (u8)(FontHeight(font) + 2);
     list->focused = 0;
 }
 

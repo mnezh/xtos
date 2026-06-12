@@ -1,16 +1,112 @@
 #include "screen.h"
+#include "log.h"
+#include "int60.h"
 #include "xtos/text.h"
 #include "xtos/ui/font.h"
 #include "xtos/ui/fonts.h"
+
+#define FONT_ASCII_FIRST 0x20
+#define FONT_ASCII_LAST 0x7e
+#define FONT_ASCII_GLYPH_BASE 1
+#define FONT_DEBUG_SELECT_LEN 6
+#define FONT_DEBUG_SELECT_BYTES 64
+
+#ifdef XTOS_BUILD_RUNTIME
+#ifdef XTOS_DEBUG
+static const char font_debug_select_text[FONT_DEBUG_SELECT_LEN] = {
+    'S', 'e', 'l', 'e', 'c', 't'
+};
+static u8 font_debug_select_snapshot[FONT_DEBUG_SELECT_BYTES];
+static u16 font_debug_select_offsets[FONT_DEBUG_SELECT_LEN];
+static u16 font_debug_select_lengths[FONT_DEBUG_SELECT_LEN];
+static u16 font_debug_select_total;
+static const Font *font_debug_select_font;
+static u8 font_debug_select_ready;
+static u8 font_debug_select_ok_logged;
+#endif
+
+static int text_continuation(unsigned char ch)
+{
+    return (ch & 0xc0) == 0x80;
+}
+
+static int font_next_codepoint(const char **cursor, u16 *codepoint)
+{
+    const unsigned char *p;
+    u16 value;
+
+    if (cursor == 0 || *cursor == 0 || codepoint == 0) {
+        return 0;
+    }
+
+    p = (const unsigned char *)*cursor;
+    if (*p == 0) {
+        return 0;
+    }
+
+    if (*p < 0x80) {
+        *codepoint = *p;
+        *cursor = (const char *)(p + 1);
+        return 1;
+    }
+
+    if ((*p & 0xe0) == 0xc0 && text_continuation(p[1])) {
+        value = (u16)(((*p & 0x1f) << 6) | (p[1] & 0x3f));
+        if (value >= 0x80) {
+            *codepoint = value;
+            *cursor = (const char *)(p + 2);
+            return 1;
+        }
+    }
+
+    if ((*p & 0xf0) == 0xe0 && text_continuation(p[1]) &&
+        text_continuation(p[2])) {
+        value = (u16)(((*p & 0x0f) << 12) |
+                      ((p[1] & 0x3f) << 6) |
+                      (p[2] & 0x3f));
+        if (value >= 0x800) {
+            *codepoint = value;
+            *cursor = (const char *)(p + 3);
+            return 1;
+        }
+    }
+
+    *codepoint = XTOS_TEXT_REPLACEMENT;
+    *cursor = (const char *)(p + 1);
+    return 1;
+}
 
 static u16 screen_step(u8 width)
 {
     return ScreenIs640() ? (u16)((width + 1) >> 1) : width;
 }
 
+static int font_ascii_glyph_index(const Font *font, u16 codepoint, u16 *index)
+{
+    u16 glyph_index;
+
+    if (font == 0 || index == 0 ||
+        codepoint < FONT_ASCII_FIRST || codepoint > FONT_ASCII_LAST) {
+        return 0;
+    }
+
+    glyph_index = (u16)(codepoint - FONT_ASCII_FIRST +
+                        FONT_ASCII_GLYPH_BASE);
+    if (glyph_index >= font->glyph_count) {
+        return 0;
+    }
+
+    *index = glyph_index;
+    return 1;
+}
+
 static int font_glyph_index(const Font *font, u16 codepoint, u16 *index)
 {
     u16 i;
+
+    if (font_ascii_glyph_index(font, codepoint, index)) {
+        return 1;
+    }
 
     if (font == 0 || font->map == 0 || index == 0) {
         return 0;
@@ -32,60 +128,7 @@ static int font_glyph_index(const Font *font, u16 codepoint, u16 *index)
     return 0;
 }
 
-u16 FontGlyphCount(const Font *font)
-{
-    if (font == 0) {
-        return 0;
-    }
-
-    return font->glyph_count;
-}
-
-u16 FontCodepointAt(const Font *font, u16 index)
-{
-    if (font == 0 || font->map == 0 || index >= font->glyph_count) {
-        return 0;
-    }
-
-    return font->map[index].codepoint;
-}
-
-u8 FontGlyphWidthAt(const Font *font, u16 index)
-{
-    if (font == 0 || index >= font->glyph_count) {
-        return 0;
-    }
-
-    if (font->widths == 0) {
-        return font->width;
-    }
-
-    return font->widths[index];
-}
-
-u16 FontTextWidth(const Font *font, const char *text)
-{
-    u16 width;
-    u16 codepoint;
-    u16 glyph_index;
-
-    if (font == 0 || text == 0) {
-        return 0;
-    }
-
-    width = 0;
-
-    while (TextNextCodepoint(&text, &codepoint)) {
-        if (font_glyph_index(font, codepoint, &glyph_index)) {
-            width = (u16)(width + screen_step(FontGlyphWidthAt(font,
-                                                               glyph_index)));
-        }
-    }
-
-    return width;
-}
-
-const Font *FontGet(enum FontId id)
+static const Font *runtime_font_by_id(FontId id)
 {
     if (id == FONT_SMALL) {
         return &Font4x6;
@@ -97,3 +140,398 @@ const Font *FontGet(enum FontId id)
 
     return &Font5x7;
 }
+
+const Font *RuntimeFontById(FontId id)
+{
+    return runtime_font_by_id(id);
+}
+
+u8 RuntimeFontCount(void)
+{
+    return 3;
+}
+
+const char *RuntimeFontName(FontId id)
+{
+    return runtime_font_by_id(id)->name;
+}
+
+u8 RuntimeFontWidth(FontId id)
+{
+    return runtime_font_by_id(id)->width;
+}
+
+u8 RuntimeFontHeight(FontId id)
+{
+    return runtime_font_by_id(id)->height;
+}
+
+u16 RuntimeFontGlyphCount(FontId id)
+{
+    return runtime_font_by_id(id)->glyph_count;
+}
+
+u16 RuntimeFontCodepointAt(FontId id, u16 index)
+{
+    return FontCodepointAt(runtime_font_by_id(id), index);
+}
+
+u8 RuntimeFontGlyphWidthAt(FontId id, u16 index)
+{
+    return FontGlyphWidthAt(runtime_font_by_id(id), index);
+}
+#endif
+
+#ifndef XTOS_BUILD_RUNTIME
+static const Font app_font_handles[3] = {
+    { "FONT_SYSTEM", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { "FONT_SMALL", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { "FONT_LARGE", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+};
+
+static char app_font_names[3][24];
+
+static FontId app_font_id(const Font *font)
+{
+    if (font == &app_font_handles[FONT_SMALL]) {
+        return FONT_SMALL;
+    }
+
+    if (font == &app_font_handles[FONT_LARGE]) {
+        return FONT_LARGE;
+    }
+
+    return FONT_SYSTEM;
+}
+
+static u16 font_call(XtosPb XTOS_FAR *pb)
+{
+    return XtosInt60Call(pb);
+}
+
+static u16 font_query_word(FontId id, u16 opcode, u16 index)
+{
+    XtosPb pb;
+    u16 int_in[2];
+    u16 int_out[1];
+
+    int_in[0] = id;
+    int_in[1] = index;
+    int_out[0] = 0;
+    pb.opcode = opcode;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    font_call(&pb);
+    return int_out[0];
+}
+#endif
+
+u16 FontGlyphCount(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return font_query_word(app_font_id(font), XTOS_OP_FONT_GLYPH_COUNT, 0);
+#else
+    if (font == 0) {
+        return 0;
+    }
+
+    return font->glyph_count;
+#endif
+}
+
+u16 FontCodepointAt(const Font *font, u16 index)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return font_query_word(app_font_id(font), XTOS_OP_FONT_CODEPOINT_AT,
+                           index);
+#else
+    if (font != 0 &&
+        index >= FONT_ASCII_GLYPH_BASE &&
+        index <= (u16)(FONT_ASCII_LAST - FONT_ASCII_FIRST +
+                       FONT_ASCII_GLYPH_BASE) &&
+        index < font->glyph_count) {
+        return (u16)(index - FONT_ASCII_GLYPH_BASE + FONT_ASCII_FIRST);
+    }
+
+    if (font == 0 || font->map == 0 || index >= font->glyph_count) {
+        return 0;
+    }
+
+    return font->map[index].codepoint;
+#endif
+}
+
+u8 FontGlyphWidthAt(const Font *font, u16 index)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return (u8)font_query_word(app_font_id(font), XTOS_OP_FONT_GLYPH_WIDTH_AT,
+                               index);
+#else
+    if (font == 0 || index >= font->glyph_count) {
+        return 0;
+    }
+
+    if (font->widths == 0) {
+        return font->width;
+    }
+
+    return font->widths[index];
+#endif
+}
+
+u8 FontWidth(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return (u8)font_query_word(app_font_id(font), XTOS_OP_FONT_WIDTH, 0);
+#else
+    return font != 0 ? font->width : 0;
+#endif
+}
+
+u8 FontHeight(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return (u8)font_query_word(app_font_id(font), XTOS_OP_FONT_HEIGHT, 0);
+#else
+    return font != 0 ? font->height : 0;
+#endif
+}
+
+u8 FontCount(void)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return (u8)font_query_word(FONT_SYSTEM, XTOS_OP_FONT_COUNT, 0);
+#else
+    return RuntimeFontCount();
+#endif
+}
+
+const char *FontName(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    XtosPb pb;
+    u16 int_in[2];
+    FontId id;
+
+    id = app_font_id(font);
+    int_in[0] = id;
+    int_in[1] = sizeof(app_font_names[0]);
+    app_font_names[id][0] = 0;
+    pb.opcode = XTOS_OP_FONT_NAME;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = 0;
+    pb.addr_in = 0;
+    pb.addr_out = (void XTOS_FAR *)app_font_names[id];
+    font_call(&pb);
+    return app_font_names[id];
+#else
+    return font != 0 ? font->name : "";
+#endif
+}
+
+FontId FontIdOf(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    return app_font_id(font);
+#else
+    if (font == &Font4x6) {
+        return FONT_SMALL;
+    }
+
+    if (font == &Font5x8) {
+        return FONT_LARGE;
+    }
+
+    return FONT_SYSTEM;
+#endif
+}
+
+u16 FontTextWidth(const Font *font, const char *text)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    int_in[0] = FontIdOf(font);
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_CANVAS_TEXT_WIDTH;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
+    font_call(&pb);
+    return int_out[0];
+#else
+    u16 width;
+    u16 codepoint;
+    u16 glyph_index;
+
+    if (font == 0 || text == 0) {
+        return 0;
+    }
+
+    width = 0;
+
+    while (font_next_codepoint(&text, &codepoint)) {
+        if (font_glyph_index(font, codepoint, &glyph_index)) {
+            width = (u16)(width + screen_step(FontGlyphWidthAt(font,
+                                                               glyph_index)));
+        }
+    }
+
+    return width;
+#endif
+}
+
+const Font *FontGet(FontId id)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    if (id > FONT_LARGE) {
+        id = FONT_SYSTEM;
+    }
+
+    return &app_font_handles[id];
+#else
+    if (id == FONT_SMALL) {
+        return &Font4x6;
+    }
+
+    if (id == FONT_LARGE) {
+        return &Font5x8;
+    }
+
+    return &Font5x7;
+#endif
+}
+
+#ifdef XTOS_DEBUG
+#ifdef XTOS_BUILD_RUNTIME
+static u16 font_debug_bytes_per_row(const Font *font)
+{
+    return (u16)((font->width + 7) >> 3);
+}
+#endif
+
+void FontDebugSnapshotSelect(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    (void)font;
+    XTOS_LOG_PREFIX("[FONTDBG]", "snapshot_resident_font_deferred");
+#else
+    u16 i;
+    u16 j;
+    u16 glyph_index;
+    u16 glyph_offset;
+    u16 glyph_length;
+    u16 out;
+
+    font_debug_select_ready = 0;
+    font_debug_select_ok_logged = 0;
+    font_debug_select_total = 0;
+    font_debug_select_font = font;
+
+    XtosInt60RestoreDataSegment();
+
+    if (font == 0 || font->glyphs == 0) {
+        XTOS_LOG_PREFIX("[FONTDBG]", "snapshot_bad_font");
+        return;
+    }
+
+    XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_font_ptr", (u16)font);
+    XTOS_LOG_PREFIX_U16("[FONTDBG]", "font4x6_ptr", (u16)&Font4x6);
+    XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_width", font->width);
+    XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_height", font->height);
+    XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_count", font->glyph_count);
+
+    out = 0;
+    for (i = 0; i < FONT_DEBUG_SELECT_LEN; ++i) {
+        if ((u16)font_debug_select_text[i] < FONT_ASCII_FIRST ||
+            (u16)font_debug_select_text[i] > FONT_ASCII_LAST) {
+            XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_missing_cp",
+                                (u16)font_debug_select_text[i]);
+            return;
+        }
+
+        glyph_index = (u16)((u16)font_debug_select_text[i] -
+                            FONT_ASCII_FIRST + FONT_ASCII_GLYPH_BASE);
+        if (glyph_index >= font->glyph_count) {
+            XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_missing_cp",
+                                (u16)font_debug_select_text[i]);
+            return;
+        }
+
+        glyph_length = (u16)(font->height * font_debug_bytes_per_row(font));
+        glyph_offset = (u16)(glyph_index * glyph_length);
+        font_debug_select_offsets[i] = glyph_offset;
+        font_debug_select_lengths[i] = glyph_length;
+
+        for (j = 0; j < glyph_length && out < FONT_DEBUG_SELECT_BYTES; ++j) {
+            font_debug_select_snapshot[out++] = font->glyphs[glyph_offset + j];
+        }
+    }
+
+    font_debug_select_total = out;
+    font_debug_select_ready = 1;
+    XTOS_LOG_PREFIX("[FONTDBG]", "snapshot_select_ready");
+    XTOS_LOG_PREFIX_U16("[FONTDBG]", "snapshot_bytes",
+                        font_debug_select_total);
+#endif
+}
+
+void FontDebugCheckSelect(const Font *font)
+{
+#ifndef XTOS_BUILD_RUNTIME
+    (void)font;
+#else
+    u16 i;
+    u16 j;
+    u16 in;
+    u16 offset;
+    u8 actual;
+    u8 expected;
+
+    XtosInt60RestoreDataSegment();
+
+    if (!font_debug_select_ready || font == 0 ||
+        font != font_debug_select_font || font->glyphs == 0) {
+        return;
+    }
+
+    in = 0;
+    for (i = 0; i < FONT_DEBUG_SELECT_LEN; ++i) {
+        offset = font_debug_select_offsets[i];
+
+        for (j = 0; j < font_debug_select_lengths[i]; ++j) {
+            if (in >= font_debug_select_total) {
+                return;
+            }
+
+            expected = font_debug_select_snapshot[in];
+            actual = font->glyphs[offset + j];
+            if (actual != expected) {
+                XTOS_LOG_PREFIX("[FONTDBG]", "select_mismatch");
+                XTOS_LOG_PREFIX_U16("[FONTDBG]", "glyph_pos", i);
+                XTOS_LOG_PREFIX_U16("[FONTDBG]", "byte_pos", j);
+                XTOS_LOG_PREFIX_U16("[FONTDBG]", "expected", expected);
+                XTOS_LOG_PREFIX_U16("[FONTDBG]", "actual", actual);
+                font_debug_select_ready = 0;
+                return;
+            }
+
+            ++in;
+        }
+    }
+
+    if (!font_debug_select_ok_logged) {
+        XTOS_LOG_PREFIX("[FONTDBG]", "select_unchanged");
+        font_debug_select_ok_logged = 1;
+    }
+#endif
+}
+#endif

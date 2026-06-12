@@ -1,4 +1,7 @@
+#include <stdio.h>
+
 #include "event.h"
+#include "client.h"
 #include "int60.h"
 #include "log.h"
 #include "cursor.h"
@@ -24,6 +27,12 @@ int AppRun(Application *app)
         return 1;
     }
 
+    if (!XtosRuntimePresent()) {
+        puts("This is a XTOS application and cannot run in DOS");
+        return 1;
+    }
+
+    XtosRuntimeLog("application detected XTOS runtime");
     app_running = 1;
     first_draw_screenshot_done = 0;
     XtosInt60Install();

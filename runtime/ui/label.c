@@ -14,7 +14,7 @@ static u16 label_width(Label *label)
     text = label->text;
 
     while (text != 0 && *text != 0) {
-        width = (u16)(width + label->font->width);
+        width = (u16)(width + FontWidth(label->font));
         ++text;
     }
 
@@ -65,7 +65,7 @@ void LabelDrawInRect(Label *label, const Rect *rect)
     bounds.left = label->x;
     bounds.top = label->y;
     bounds.right = (u16)(label->x + label->dirty_width);
-    bounds.bottom = (u16)(label->y + label->font->height);
+    bounds.bottom = (u16)(label->y + FontHeight(label->font));
 
     if (!RectIntersects(&bounds, rect)) {
         return;
@@ -93,6 +93,6 @@ void LabelInvalidate(Label *label)
     rect.left = label->x;
     rect.top = label->y;
     rect.right = (u16)(label->x + label->dirty_width);
-    rect.bottom = (u16)(label->y + label->font->height);
+    rect.bottom = (u16)(label->y + FontHeight(label->font));
     InvalidateRect(&rect);
 }

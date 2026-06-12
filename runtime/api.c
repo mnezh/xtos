@@ -10,6 +10,7 @@ static u16 app_call(XtosPb XTOS_FAR *pb)
     if (pb->opcode != XTOS_OP_GET_EVENT &&
         pb->opcode != XTOS_OP_DISPLAY_CURRENT_MODE &&
         pb->opcode != XTOS_OP_DISPLAY_CURRENT_PALETTE &&
+        pb->opcode != XTOS_OP_SYSTEM_PREFS_CURRENT &&
         pb->opcode < XTOS_OP_CANVAS_CLEAR) {
         XTOS_LOG_PREFIX_U16("[APP]", "op", pb->opcode);
     }
@@ -110,33 +111,47 @@ void CanvasFillRect(u16 left, u16 top, u16 right, u16 bottom,
 void CanvasText(u16 x, u16 y, const Font *font,
                 enum CanvasColorRole role, const char *text)
 {
+    CanvasTextId(x, y, FontIdOf(font), role, text);
+}
+
+void CanvasTextId(u16 x, u16 y, FontId font_id,
+                  enum CanvasColorRole role, const char *text)
+{
     XtosPb pb;
-    u16 int_in[3];
+    u16 int_in[4];
 
     int_in[0] = x;
     int_in[1] = y;
-    int_in[2] = (u16)role;
+    int_in[2] = font_id;
+    int_in[3] = (u16)role;
     pb.opcode = XTOS_OP_CANVAS_TEXT;
     pb.result = XTOS_RESULT_OK;
     pb.int_in = int_in;
     pb.int_out = 0;
-    pb.addr_in = (void XTOS_FAR *)font;
-    pb.addr_out = (void XTOS_FAR *)text;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
     app_call(&pb);
 }
 
 u16 CanvasTextWidth(const Font *font, const char *text)
 {
+    return CanvasTextWidthId(FontIdOf(font), text);
+}
+
+u16 CanvasTextWidthId(FontId font_id, const char *text)
+{
     XtosPb pb;
+    u16 int_in[1];
     u16 int_out[1];
 
+    int_in[0] = font_id;
     int_out[0] = 0;
     pb.opcode = XTOS_OP_CANVAS_TEXT_WIDTH;
     pb.result = XTOS_RESULT_OK;
-    pb.int_in = 0;
+    pb.int_in = int_in;
     pb.int_out = int_out;
-    pb.addr_in = (void XTOS_FAR *)font;
-    pb.addr_out = (void XTOS_FAR *)text;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
     app_call(&pb);
     return int_out[0];
 }
@@ -287,15 +302,16 @@ int SystemPrefsSave(const SystemPrefs *prefs)
     pb.addr_in = (void XTOS_FAR *)prefs;
     pb.addr_out = 0;
     app_call(&pb);
+    XTOS_LOG_PREFIX_U16("[APP]", "prefs_save_pb_result", pb.result);
+    XTOS_LOG_PREFIX_U16("[APP]", "prefs_save_result", int_out[0]);
     return (int)int_out[0];
 }
 
 const SystemPrefs *SystemPrefsCurrent(void)
 {
     XtosPb pb;
-    const SystemPrefs *prefs;
+    static SystemPrefs prefs;
 
-    prefs = 0;
     pb.opcode = XTOS_OP_SYSTEM_PREFS_CURRENT;
     pb.result = XTOS_RESULT_OK;
     pb.int_in = 0;
@@ -303,7 +319,7 @@ const SystemPrefs *SystemPrefsCurrent(void)
     pb.addr_in = 0;
     pb.addr_out = (void XTOS_FAR *)&prefs;
     app_call(&pb);
-    return prefs;
+    return &prefs;
 }
 
 void SystemPrefsApply(const SystemPrefs *prefs)
