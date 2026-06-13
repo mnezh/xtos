@@ -198,6 +198,18 @@ XTOS_OP_EXEC_REQUEST
 XTOS_OP_EXEC_GET_NEXT
 XTOS_OP_EXEC_CLEAR_NEXT
 XTOS_OP_UNINSTALL
+XTOS_OP_FORM_CREATE
+XTOS_OP_FORM_DESTROY
+XTOS_OP_FORM_ADD_LABEL
+XTOS_OP_FORM_ADD_BUTTON
+XTOS_OP_FORM_DRAW
+XTOS_OP_FORM_DISPATCH
+XTOS_OP_FORM_ADD_LIST
+XTOS_OP_FORM_SET_LIST_ITEM
+XTOS_OP_FORM_LIST_SELECTED
+XTOS_OP_FORM_LIST_SET_SELECTED
+XTOS_OP_FORM_SET_LABEL_TEXT
+XTOS_OP_FORM_INVALIDATE
 ```
 
 Resident `runtime.exe` currently implements only:
@@ -242,12 +254,24 @@ XTOS_OP_EXEC_REQUEST
 XTOS_OP_EXEC_GET_NEXT
 XTOS_OP_EXEC_CLEAR_NEXT
 XTOS_OP_UNINSTALL
+XTOS_OP_FORM_CREATE
+XTOS_OP_FORM_DESTROY
+XTOS_OP_FORM_ADD_LABEL
+XTOS_OP_FORM_ADD_BUTTON
+XTOS_OP_FORM_DRAW
+XTOS_OP_FORM_DISPATCH
+XTOS_OP_FORM_ADD_LIST
+XTOS_OP_FORM_SET_LIST_ITEM
+XTOS_OP_FORM_LIST_SELECTED
+XTOS_OP_FORM_LIST_SET_SELECTED
+XTOS_OP_FORM_SET_LABEL_TEXT
+XTOS_OP_FORM_INVALIDATE
 ```
 
 The app-local transitional handler still implements Screenshot. Canvas, Font,
-Event/Input, Cursor, and Exec opcodes are forwarded to the saved resident
-vector so hardware-facing services and launcher handoff state run on the
-resident stack/data path.
+Event/Input, Cursor, Exec, and runtime-owned Form opcodes are forwarded to the
+saved resident vector so hardware-facing services, launcher handoff state, and
+resident Form trees run on the resident stack/data path.
 
 ## Resident vs Transitional Opcodes
 
@@ -301,14 +325,130 @@ CanvasFillRect
 CanvasText
 CanvasTextWidth
 CanvasPresent
+RtFormCreate
+RtFormDestroy
+RtFormAddLabel
+RtFormAddButton
+RtFormAddList
+RtFormListSelected
+RtFormListSetSelected
+RtFormSetLabelText
+RtFormInvalidate
+RtFormDraw
+RtFormDispatch
 ```
 
-Form APIs remain direct by design. They involve app-owned structs, focus state, views, invalidation, and custom draw function pointers.
+The legacy app-local `Form*`, `Label*`, `List*`, `Button*`, and `View*` APIs
+remain direct for apps that still own live UI state. The new `RtForm*` APIs are
+handle-based resident services for runtime-owned standard controls.
 
-Widget APIs such as Label, List, Button, and View also remain direct in Phase 1A
-for the same reason: they own or reference mutable app-side state and may
-involve app-provided view draw functions. Their drawing calls now cross through
-resident Canvas services.
+Legacy widget drawing calls now cross through resident Canvas services. Runtime
+Form drawing/focus/hit-testing/button dispatch runs resident-side and returns
+semantic `FormAction` values to the app.
+
+## Runtime-Owned Forms
+
+Phase 1B starts the Forms migration with resident-owned standard controls used
+by `launcher.exe`, `showcase.exe`, and `control.exe`.
+
+Public app-facing types live in `xtos/ui/runtime_form.h`:
+
+```c
+typedef u16 FormId;
+typedef u16 ControlId;
+
+typedef struct FormAction {
+    u16 type;
+    u16 form_id;
+    u16 control_id;
+    u16 value;
+} FormAction;
+```
+
+Current action types:
+
+```text
+RT_FORM_ACTION_NONE
+RT_FORM_ACTION_BUTTON
+RT_FORM_ACTION_LIST_CHANGED
+RT_FORM_ACTION_CLOSE
+```
+
+Current APIs:
+
+```c
+FormId RtFormCreate(const char *title, FontId font_id);
+int RtFormDestroy(FormId form_id);
+int RtFormAddLabel(FormId form_id, ControlId control_id,
+                   u16 x, u16 y, FontId font_id,
+                   enum CanvasColorRole color, const char *text);
+int RtFormAddButton(FormId form_id, ControlId control_id,
+                    u16 left, u16 top, u16 right, u16 bottom,
+                    FontId font_id, const char *text);
+int RtFormAddList(FormId form_id, ControlId control_id,
+                  u16 x, u16 y, u16 width, FontId font_id,
+                  const char * const *items, u8 count);
+u8 RtFormListSelected(FormId form_id, ControlId control_id);
+int RtFormListSetSelected(FormId form_id, ControlId control_id, u8 selected);
+int RtFormSetLabelText(FormId form_id, ControlId control_id,
+                       const char *text);
+int RtFormInvalidate(FormId form_id);
+int RtFormDraw(FormId form_id);
+int RtFormDispatch(FormId form_id, const Event *event, FormAction *action);
+```
+
+Resident storage is fixed-size and uses no dynamic allocation:
+
+```text
+RT_FORM_MAX_FORMS       4
+RT_FORM_MAX_LABELS      8 per form
+RT_FORM_MAX_LISTS       4 per form
+RT_FORM_MAX_LIST_ITEMS  8 per list
+RT_FORM_MAX_BUTTONS     8 per form
+RT_FORM_MAX_LABEL_TEXT  96 bytes per label
+RT_FORM_MAX_TEXT_BYTES  512
+```
+
+App strings passed during construction are copied by the resident dispatcher
+into resident scratch storage, then copied into the live Form text pool.
+Runtime Forms do not retain app pointers. Label text uses fixed per-label
+storage so status updates do not consume the shared construction text pool.
+
+Runtime Forms support labels, buttons, and fixed static text lists. Lists have
+resident-owned selected/focused state, keyboard up/down handling, mouse row
+selection, and `RT_FORM_ACTION_LIST_CHANGED` semantic actions where
+`control_id` is the list ID and `value` is the selected index.
+
+`launcher.exe` uses runtime-owned labels/buttons. `showcase.exe` uses
+runtime-owned labels/lists/buttons and updates its status label through
+`RtFormSetLabelText()`. `control.exe` uses runtime-owned labels/lists/buttons,
+keeps preference policy app-local, and calls `RtFormInvalidate()` after
+preference apply/save because those operations may reset display state. Font
+Viewer and Smoke still use legacy app-local Forms where needed.
+
+List items are copied item-by-item by the app wrapper: `RtFormAddList()` creates
+the resident list, then copies each item through a resident string-copy opcode.
+This avoids retaining or walking app pointer arrays in resident code.
+
+Resource descriptors, custom views, and runtime-to-app callbacks remain
+deferred.
+
+Current invalidation policy is intentionally cheap: `RtFormDispatch()` marks
+the app dirty only when resident dispatch reports a visual state change or a
+semantic action. Mouse movement with no hover/press behavior is a no-op and
+does not trigger a redraw. Runtime Forms track static chrome dirty state plus
+per-control dirty bits. `RtFormDraw()` draws chrome only when the form static
+bit is dirty, then redraws only dirty labels, lists, and buttons; if nothing is
+dirty it skips `CanvasPresent()`.
+
+Dirty tracking is control-level plus a small per-list row mask, not a generic
+rectangle engine. List selection redraws only the previous and new selected
+rows; list focus changes redraw the frame. Dirty labels clear the old rendered
+text area before drawing the new text.
+
+`RtFormInvalidate()` marks static chrome, labels, buttons, list frames, and all
+list rows dirty. It is intended for display reset boundaries, not ordinary
+selection movement.
 
 ## Input and Cursor Ownership
 
@@ -506,14 +646,15 @@ app-owned state, pointers, or callbacks:
 
 - `Application` lifecycle callbacks: `Init`, `HandleEvent`, `Draw`, and
   `Shutdown`
-- `Form` focus state, selected controls, and action routing
+- legacy `Form` focus state, selected controls, and action routing
 - `ViewDrawProc` custom view callbacks and their `void *data`
-- Labels, Lists, Buttons, and Views, which store app strings and mutable UI
-  state
+- legacy Labels, Lists, Buttons, and Views, which store app strings and mutable
+  UI state
 - invalidation state, which tracks app-owned dirty UI regions
 
-Moving these would require runtime-to-app callbacks or retained app pointers,
-which remains out of scope for Phase 1A.
+Runtime-owned launcher and Showcase controls no longer retain app pointers.
+Moving custom views still requires a separate callback/data policy and remains
+out of scope for this slice.
 
 ## Phase 1A Ownership Audit
 
@@ -540,20 +681,21 @@ Current app binaries intentionally still link:
 
 - `runtime/app.c` for `AppRun()` and lifecycle callback dispatch
 - `runtime/ui/form.c`, `label.c`, `list.c`, `button.c` for app-owned UI state
+  in legacy apps
 - `runtime/invalidation.c` for app-owned dirty-region tracking
 - forwarding stubs for Display, SystemPrefs, Canvas, Fonts, Event/Input, and
-  Cursor APIs
+  Cursor APIs, plus runtime-owned Form wrappers where used
 - app source files and custom view callbacks
 
 Current binary size snapshot:
 
 ```text
-runtime.exe   64048
-launcher.exe  43920
-font.exe      44496
-control.exe   44656
-showcase.exe  44256
-smoke.exe     44592
+runtime.exe   70960
+launcher.exe  45328
+font.exe      46000
+control.exe   46048
+showcase.exe  45632
+smoke.exe     46096
 ```
 
 `ia16-elf-nm` reports these generated DOS binaries as stripped/no-symbol files,
@@ -564,8 +706,6 @@ binary size snapshot.
 
 The following are not Phase 1A work:
 
-- runtime-owned Forms/widgets
-- launcher shell and app switching
 - resource compiler or packaged resources
 - custom executable format
 - runtime-owned custom views

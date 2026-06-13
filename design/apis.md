@@ -215,12 +215,13 @@ Current text limitations are intentional: no shaping, no bidirectional layout,
 no combining mark composition, no CJK support, no font fallback, and no code
 page switching.
 
-## Forms And Controls
+## Legacy Forms And Controls
 
 Forms are fixed, static-allocation containers for labels, lists, buttons, and
 custom rectangular views. They own redraw policy: static chrome is drawn once,
 controls invalidate their own bounds, and `FormDraw()` performs full or
-dirty-rectangle redraws.
+dirty-rectangle redraws. This is the legacy app-local API kept for apps that
+still own live UI state or custom views.
 
 ```c
 #define FORM_MAX_LABELS 8
@@ -366,6 +367,94 @@ view rectangle and controls redraw timing. No dynamic allocation is used.
 
 `xtos/ui/layout.h` provides these small manual-layout constants. It is not an
 automatic layout system.
+
+## Runtime-Owned Forms
+
+Phase 1B adds a handle-based Form API for resident-owned standard controls.
+Applications construct a form through explicit calls, then receive semantic
+actions. The runtime owns live widget instances, drawing, focus, hit-testing,
+button press state, and copied construction strings.
+
+```c
+typedef u16 FormId;
+typedef u16 ControlId;
+
+#define RT_FORM_INVALID 0
+
+#define RT_FORM_ACTION_NONE 0
+#define RT_FORM_ACTION_BUTTON 1
+#define RT_FORM_ACTION_LIST_CHANGED 2
+#define RT_FORM_ACTION_CLOSE 255
+
+typedef struct FormAction {
+    u16 type;
+    u16 form_id;
+    u16 control_id;
+    u16 value;
+} FormAction;
+
+FormId RtFormCreate(const char *title, FontId font_id);
+int RtFormDestroy(FormId form_id);
+int RtFormAddLabel(FormId form_id, ControlId control_id,
+                   u16 x, u16 y, FontId font_id,
+                   enum CanvasColorRole color, const char *text);
+int RtFormAddButton(FormId form_id, ControlId control_id,
+                    u16 left, u16 top, u16 right, u16 bottom,
+                    FontId font_id, const char *text);
+int RtFormAddList(FormId form_id, ControlId control_id,
+                  u16 x, u16 y, u16 width, FontId font_id,
+                  const char * const *items, u8 count);
+u8 RtFormListSelected(FormId form_id, ControlId control_id);
+int RtFormListSetSelected(FormId form_id, ControlId control_id, u8 selected);
+int RtFormSetLabelText(FormId form_id, ControlId control_id,
+                       const char *text);
+int RtFormInvalidate(FormId form_id);
+int RtFormDraw(FormId form_id);
+int RtFormDispatch(FormId form_id, const Event *event, FormAction *action);
+```
+
+Current resident limits:
+
+```text
+forms:       4
+labels:      8 per form
+lists:       4 per form
+list items:  8 per list
+buttons:     8 per form
+label text:  96 bytes per label
+text pool:   512 bytes
+```
+
+Launcher, Showcase, and Control Panel use this API. Font Viewer and Smoke still
+use legacy app-local Forms where needed. Runtime-owned custom views are
+deferred.
+
+Runtime lists support fixed static text items, resident selected/focused state,
+keyboard up/down selection, mouse row selection, and
+`RT_FORM_ACTION_LIST_CHANGED` with `control_id` set to the list ID and `value`
+set to the selected index. List item strings are copied into resident-owned
+storage during `RtFormAddList()`.
+
+Label construction and label updates copy into fixed resident per-label text
+buffers, so repeated status updates do not consume the shared construction text
+pool.
+
+Runtime Forms track one static dirty bit for chrome and per-control dirty bits
+for labels, lists, and buttons. The first draw clears the screen, draws static
+chrome, marks all controls dirty, then draws them. Later `RtFormDraw()` calls
+only redraw dirty controls and skip `CanvasPresent()` entirely when nothing is
+dirty.
+
+`RtFormDispatch()` invalidates the app only when focus, selection, press state,
+label text, or a semantic action changes. Mouse movement alone does not redraw
+the form. List selection redraws only the previous and new selected rows; list
+focus changes redraw the frame. Labels clear the old text area before drawing
+updated text. Runtime Forms do not yet use a generic dirty-rectangle engine.
+
+`RtFormInvalidate()` marks runtime-owned static chrome and every resident
+control dirty, then invalidates the app. Control Panel uses it after applying
+display preferences so a display reset redraws the complete resident form
+without legacy form invalidation.
 
 ## Invalidation
 

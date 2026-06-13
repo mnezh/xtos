@@ -3,6 +3,8 @@
 #include "../xtos/exec.h"
 #include "../xtos/system.h"
 #include "../xtos/ui/canvas.h"
+#include "../xtos/ui/invalidation.h"
+#include "../xtos/ui/runtime_form.h"
 #include "int60.h"
 #include "log.h"
 
@@ -356,4 +358,312 @@ void SystemPrefsApply(const SystemPrefs *prefs)
     pb.addr_in = (void XTOS_FAR *)prefs;
     pb.addr_out = 0;
     app_call(&pb);
+}
+
+FormId RtFormCreate(const char *title, FontId font_id)
+{
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    if (title == 0) {
+        return RT_FORM_INVALID;
+    }
+
+    int_in[0] = font_id;
+    int_out[0] = RT_FORM_INVALID;
+    pb.opcode = XTOS_OP_FORM_CREATE;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)title;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK ? int_out[0] : RT_FORM_INVALID;
+}
+
+int RtFormDestroy(FormId form_id)
+{
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    int_in[0] = form_id;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_DESTROY;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK && int_out[0] != 0;
+}
+
+int RtFormAddLabel(FormId form_id, ControlId control_id,
+                   u16 x, u16 y, FontId font_id,
+                   enum CanvasColorRole color, const char *text)
+{
+    XtosPb pb;
+    u16 int_in[7];
+    u16 int_out[1];
+
+    if (text == 0) {
+        return 0;
+    }
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_in[2] = x;
+    int_in[3] = y;
+    int_in[4] = font_id;
+    int_in[5] = (u16)color;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_ADD_LABEL;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK && int_out[0] != 0;
+}
+
+int RtFormAddButton(FormId form_id, ControlId control_id,
+                    u16 left, u16 top, u16 right, u16 bottom,
+                    FontId font_id, const char *text)
+{
+    XtosPb pb;
+    u16 int_in[7];
+    u16 int_out[1];
+
+    if (text == 0) {
+        return 0;
+    }
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_in[2] = left;
+    int_in[3] = top;
+    int_in[4] = right;
+    int_in[5] = bottom;
+    int_in[6] = font_id;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_ADD_BUTTON;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK && int_out[0] != 0;
+}
+
+static int rt_form_set_list_item(FormId form_id, ControlId control_id,
+                                 u8 index, const char *text)
+{
+    XtosPb pb;
+    u16 int_in[3];
+    u16 int_out[1];
+
+    if (text == 0) {
+        return 0;
+    }
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_in[2] = index;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_SET_LIST_ITEM;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK && int_out[0] != 0;
+}
+
+int RtFormAddList(FormId form_id, ControlId control_id,
+                  u16 x, u16 y, u16 width, FontId font_id,
+                  const char * const *items, u8 count)
+{
+    XtosPb pb;
+    u16 int_in[7];
+    u16 int_out[1];
+    u8 i;
+
+    if (items == 0 || count == 0) {
+        return 0;
+    }
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_in[2] = x;
+    int_in[3] = y;
+    int_in[4] = width;
+    int_in[5] = font_id;
+    int_in[6] = count;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_ADD_LIST;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    app_call(&pb);
+
+    if (pb.result != XTOS_RESULT_OK || int_out[0] == 0) {
+        return 0;
+    }
+
+    for (i = 0; i < count; ++i) {
+        if (!rt_form_set_list_item(form_id, control_id, i, items[i])) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+u8 RtFormListSelected(FormId form_id, ControlId control_id)
+{
+    XtosPb pb;
+    u16 int_in[2];
+    u16 int_out[2];
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_out[0] = 0;
+    int_out[1] = 0;
+    pb.opcode = XTOS_OP_FORM_LIST_SELECTED;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return (u8)int_out[1];
+}
+
+int RtFormListSetSelected(FormId form_id, ControlId control_id, u8 selected)
+{
+    XtosPb pb;
+    u16 int_in[3];
+    u16 int_out[1];
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_in[2] = selected;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_LIST_SET_SELECTED;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    app_call(&pb);
+    if (pb.result == XTOS_RESULT_OK && int_out[0] != 0) {
+        InvalidateAll();
+        return 1;
+    }
+    return 0;
+}
+
+int RtFormSetLabelText(FormId form_id, ControlId control_id,
+                       const char *text)
+{
+    XtosPb pb;
+    u16 int_in[2];
+    u16 int_out[1];
+
+    if (text == 0) {
+        return 0;
+    }
+
+    int_in[0] = form_id;
+    int_in[1] = control_id;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_SET_LABEL_TEXT;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)text;
+    pb.addr_out = 0;
+    app_call(&pb);
+    if (pb.result == XTOS_RESULT_OK && int_out[0] != 0) {
+        InvalidateAll();
+        return 1;
+    }
+    return 0;
+}
+
+int RtFormInvalidate(FormId form_id)
+{
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    int_in[0] = form_id;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_INVALIDATE;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    app_call(&pb);
+    if (pb.result == XTOS_RESULT_OK && int_out[0] != 0) {
+        InvalidateAll();
+        return 1;
+    }
+    return 0;
+}
+
+int RtFormDraw(FormId form_id)
+{
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    int_in[0] = form_id;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_DRAW;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = 0;
+    pb.addr_out = 0;
+    app_call(&pb);
+    return pb.result == XTOS_RESULT_OK && int_out[0] != 0;
+}
+
+int RtFormDispatch(FormId form_id, const Event *event, FormAction *action)
+{
+    XtosPb pb;
+    u16 int_in[1];
+    u16 int_out[1];
+
+    if (event == 0 || action == 0) {
+        return 0;
+    }
+
+    action->type = RT_FORM_ACTION_NONE;
+    action->form_id = RT_FORM_INVALID;
+    action->control_id = 0;
+    action->value = 0;
+    int_in[0] = form_id;
+    int_out[0] = 0;
+    pb.opcode = XTOS_OP_FORM_DISPATCH;
+    pb.result = XTOS_RESULT_OK;
+    pb.int_in = int_in;
+    pb.int_out = int_out;
+    pb.addr_in = (void XTOS_FAR *)event;
+    pb.addr_out = (void XTOS_FAR *)action;
+    app_call(&pb);
+    if (pb.result == XTOS_RESULT_OK && int_out[0] != 0) {
+        InvalidateAll();
+        return 1;
+    }
+    return 0;
 }

@@ -96,6 +96,30 @@ XtosInt60Dispatch:
     je .exec_clear_next
     cmpw $40, %ax
     je .uninstall
+    cmpw $41, %ax
+    je .form_create
+    cmpw $42, %ax
+    je .form_destroy
+    cmpw $43, %ax
+    je .form_add_label
+    cmpw $44, %ax
+    je .form_add_button
+    cmpw $45, %ax
+    je .form_draw
+    cmpw $46, %ax
+    je .form_dispatch
+    cmpw $47, %ax
+    je .form_add_list
+    cmpw $48, %ax
+    je .form_set_list_item
+    cmpw $49, %ax
+    je .form_list_selected
+    cmpw $50, %ax
+    je .form_list_set_selected
+    cmpw $51, %ax
+    je .form_set_label_text
+    cmpw $52, %ax
+    je .form_invalidate
     jmp .unknown
 
 .ping:
@@ -604,6 +628,271 @@ XtosInt60Dispatch:
     xorw %ax, %ax
     jmp .set_result
 
+.form_create:
+    movw $1, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    call .copy_addr_in_to_form_text_arg
+    pushw %bx
+    pushw $resident_form_text_arg
+    pushw resident_canvas_args
+    lcall $RuntimeFormCreateText@OZSEG16, $RuntimeFormCreateText
+    addw $4, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_destroy:
+    movw $1, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw resident_canvas_args
+    lcall $RuntimeFormDestroy@OZSEG16, $RuntimeFormDestroy
+    addw $2, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_add_label:
+    movw $6, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    call .copy_addr_in_to_form_text_arg
+    pushw %bx
+    pushw $resident_form_text_arg
+    pushw resident_canvas_args+10
+    pushw resident_canvas_args+8
+    pushw resident_canvas_args+6
+    pushw resident_canvas_args+4
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormAddLabelText@OZSEG16, $RuntimeFormAddLabelText
+    addw $14, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_add_button:
+    movw $7, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    call .copy_addr_in_to_form_text_arg
+    pushw %bx
+    pushw $resident_form_text_arg
+    pushw resident_canvas_args+12
+    pushw resident_canvas_args+10
+    pushw resident_canvas_args+8
+    pushw resident_canvas_args+6
+    pushw resident_canvas_args+4
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormAddButtonText@OZSEG16, $RuntimeFormAddButtonText
+    addw $16, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_draw:
+    movw $1, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw resident_canvas_args
+    lcall $RuntimeFormDraw@OZSEG16, $RuntimeFormDraw
+    addw $2, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_dispatch:
+    movw $1, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    movw %es:16(%bx), %ax
+    orw %es:18(%bx), %ax
+    jz .bad_parameter
+    pushw %bx
+    pushw %es:18(%bx)
+    pushw %es:16(%bx)
+    pushw %es:14(%bx)
+    pushw %es:12(%bx)
+    pushw resident_canvas_args
+    lcall $RuntimeFormDispatchFar@OZSEG16, $RuntimeFormDispatchFar
+    addw $10, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_add_list:
+    movw $7, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw resident_canvas_args+12
+    pushw resident_canvas_args+10
+    pushw resident_canvas_args+8
+    pushw resident_canvas_args+6
+    pushw resident_canvas_args+4
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormAddList@OZSEG16, $RuntimeFormAddList
+    addw $14, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_set_list_item:
+    movw $3, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    call .copy_addr_in_to_form_text_arg
+    pushw %bx
+    pushw $resident_form_text_arg
+    pushw resident_canvas_args+4
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormSetListItemText@OZSEG16, $RuntimeFormSetListItemText
+    addw $8, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_list_selected:
+    movw $2, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw $resident_form_selected
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormListSelected@OZSEG16, $RuntimeFormListSelected
+    addw $6, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    movw resident_form_selected, %ax
+    call .write_int_out_second_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_list_set_selected:
+    movw $3, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw resident_canvas_args+4
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormListSetSelected@OZSEG16, $RuntimeFormListSetSelected
+    addw $6, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_set_label_text:
+    movw $2, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    movw %es:12(%bx), %ax
+    orw %es:14(%bx), %ax
+    jz .bad_parameter
+    call .copy_addr_in_to_form_text_arg
+    pushw %bx
+    pushw $resident_form_text_arg
+    pushw resident_canvas_args+2
+    pushw resident_canvas_args
+    lcall $RuntimeFormSetLabelText@OZSEG16, $RuntimeFormSetLabelText
+    addw $6, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
+.form_invalidate:
+    movw $1, %cx
+    movw $resident_canvas_args, %di
+    call .load_int_in_words
+    jc .bad_parameter
+    call .check_int_out
+    jc .bad_parameter
+    pushw %bx
+    pushw resident_canvas_args
+    lcall $RuntimeFormInvalidate@OZSEG16, $RuntimeFormInvalidate
+    addw $2, %sp
+    popw %bx
+    call .restore_pb_es
+    call .write_int_out_word
+    xorw %ax, %ax
+    jmp .set_result
+
 .uninstall:
     call .check_int_out
     jc .bad_parameter
@@ -712,6 +1001,15 @@ XtosInt60Dispatch:
     pushw %es
     movw %dx, %es
     movw %ax, %es:(%di)
+    popw %es
+    ret
+
+.write_int_out_second_word:
+    movw %es:8(%bx), %di
+    movw %es:10(%bx), %dx
+    pushw %es
+    movw %dx, %es
+    movw %ax, %es:2(%di)
     popw %es
     ret
 
@@ -824,12 +1122,28 @@ XtosInt60Dispatch:
     popw %es
     ret
 
+.copy_addr_in_to_form_text_arg:
+    pushw %bx
+    pushw $96
+    pushw %es:14(%bx)
+    pushw %es:12(%bx)
+    pushw $resident_form_text_arg
+    lcall $XtosCopyFarString@OZSEG16, $XtosCopyFarString
+    addw $8, %sp
+    popw %bx
+    call .restore_pb_es
+    ret
+
     .data
 resident_prefs_temp:
     .word 0
 resident_canvas_args:
-    .word 0, 0, 0, 0, 0
+    .word 0, 0, 0, 0, 0, 0, 0, 0
 resident_event_temp:
     .word 0, 0, 0, 0, 0
 resident_exec_path:
     .space 64, 0
+resident_form_selected:
+    .word 0
+resident_form_text_arg:
+    .space 96, 0

@@ -4,25 +4,24 @@
 #include "xtos/system.h"
 #include "xtos/ui/canvas.h"
 #include "xtos/ui/font.h"
-#include "xtos/ui/form.h"
+#include "xtos/ui/layout.h"
+#include "xtos/ui/runtime_form.h"
 
 #define MAX_MODE_ITEMS 4
 #define MAX_PALETTE_ITEMS 8
-#define ACTION_APPLY 1
-#define ACTION_SAVE 2
 
-static Form MainForm;
-static List ModeList;
-static List PaletteList;
-static Label ModeLabel;
-static Label PaletteLabel;
-static Label StatusLabel;
-static Button ApplyButton;
-static Button SaveButton;
+#define CONTROL_MODE_LIST 1
+#define CONTROL_PALETTE_LIST 2
+#define CONTROL_STATUS_LABEL 3
+#define CONTROL_APPLY_BUTTON 4
+#define CONTROL_SAVE_BUTTON 5
+#define CONTROL_MODE_LABEL 6
+#define CONTROL_PALETTE_LABEL 7
+
+static FormId MainForm;
 
 static const char *mode_items[MAX_MODE_ITEMS];
 static const char *palette_items[MAX_PALETTE_ITEMS];
-static const char *status_text;
 
 static u16 button_right_for(u16 left, const char *text)
 {
@@ -85,8 +84,9 @@ static void selected_prefs(SystemPrefs *prefs)
     const DisplayModeInfo *mode;
     const DisplayPaletteInfo *palette;
 
-    mode = DisplayModeInfoAt(ListSelected(&ModeList));
-    palette = DisplayPaletteInfoAt(ListSelected(&PaletteList));
+    mode = DisplayModeInfoAt(RtFormListSelected(MainForm, CONTROL_MODE_LIST));
+    palette = DisplayPaletteInfoAt(RtFormListSelected(MainForm,
+                                                      CONTROL_PALETTE_LIST));
 
     prefs->mode = mode != 0 ? mode->id : DISPLAY_MODE_LOW;
     prefs->palette = palette != 0 ? palette->id :
@@ -95,8 +95,7 @@ static void selected_prefs(SystemPrefs *prefs)
 
 static void set_status(const char *text)
 {
-    status_text = text;
-    LabelSetText(&StatusLabel, status_text);
+    RtFormSetLabelText(MainForm, CONTROL_STATUS_LABEL, text);
 }
 
 static void ControlPanelInit(void)
@@ -110,33 +109,33 @@ static void ControlPanelInit(void)
     apply_right = button_right_for(7, "Apply");
     save_left = (u16)(apply_right + UI_GAP + 1);
 
-    FormInit(&MainForm, "Control Panel", FontGet(FONT_SYSTEM));
-    LabelInit(&ModeLabel, 9, 6, FontGet(FONT_SMALL), "Display Mode",
-              CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&PaletteLabel, 129, 6, FontGet(FONT_SMALL), "Palette",
-              CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&StatusLabel, 7, 176, FontGet(FONT_SMALL), "",
-              CANVAS_EXTRA_1_ON_BACKGROUND);
-    ButtonInit(&ApplyButton, ACTION_APPLY, 7, 158, apply_right, 170,
-               FontGet(FONT_SMALL), "Apply");
-    ButtonInit(&SaveButton, ACTION_SAVE, save_left, 158,
-               button_right_for(save_left, "Save"), 170,
-               FontGet(FONT_SMALL), "Save");
+    MainForm = RtFormCreate("Control Panel", FONT_SYSTEM);
+    if (MainForm == RT_FORM_INVALID) {
+        AppQuit();
+        return;
+    }
 
-    ListInit(&ModeList, 7, 14, 104, FontGet(FONT_SMALL), mode_items,
-             DisplayModeCount());
-    ListInit(&PaletteList, 127, 14, 144, FontGet(FONT_SMALL), palette_items,
-             DisplayPaletteCount());
-    ListSetSelected(&ModeList, mode_index_for(prefs->mode));
-    ListSetSelected(&PaletteList, palette_index_for(prefs->palette));
+    RtFormAddLabel(MainForm, CONTROL_MODE_LABEL, 9, 6, FONT_SMALL,
+                   CANVAS_PRIMARY_FOREGROUND, "Display Mode");
+    RtFormAddLabel(MainForm, CONTROL_PALETTE_LABEL, 129, 6, FONT_SMALL,
+                   CANVAS_PRIMARY_FOREGROUND, "Palette");
+    RtFormAddLabel(MainForm, CONTROL_STATUS_LABEL, 7, 176, FONT_SMALL,
+                   CANVAS_EXTRA_1_ON_BACKGROUND, "");
 
-    FormAddLabel(&MainForm, &ModeLabel);
-    FormAddLabel(&MainForm, &PaletteLabel);
-    FormAddLabel(&MainForm, &StatusLabel);
-    FormAddList(&MainForm, &ModeList);
-    FormAddList(&MainForm, &PaletteList);
-    FormAddButton(&MainForm, &ApplyButton);
-    FormAddButton(&MainForm, &SaveButton);
+    RtFormAddList(MainForm, CONTROL_MODE_LIST, 7, 14, 104, FONT_SMALL,
+                  mode_items, DisplayModeCount());
+    RtFormAddList(MainForm, CONTROL_PALETTE_LIST, 127, 14, 144, FONT_SMALL,
+                  palette_items, DisplayPaletteCount());
+    RtFormListSetSelected(MainForm, CONTROL_MODE_LIST,
+                          mode_index_for(prefs->mode));
+    RtFormListSetSelected(MainForm, CONTROL_PALETTE_LIST,
+                          palette_index_for(prefs->palette));
+
+    RtFormAddButton(MainForm, CONTROL_APPLY_BUTTON, 7, 158,
+                    apply_right, 170, FONT_SMALL, "Apply");
+    RtFormAddButton(MainForm, CONTROL_SAVE_BUTTON, save_left, 158,
+                    button_right_for(save_left, "Save"), 170,
+                    FONT_SMALL, "Save");
     set_status("Current settings loaded");
 }
 
@@ -146,7 +145,7 @@ static void apply_selected(void)
 
     selected_prefs(&prefs);
     SystemPrefsApply(&prefs);
-    FormInvalidateAll(&MainForm);
+    RtFormInvalidate(MainForm);
     set_status("Settings applied");
 }
 
@@ -156,7 +155,7 @@ static void save_selected(void)
 
     selected_prefs(&prefs);
     SystemPrefsApply(&prefs);
-    FormInvalidateAll(&MainForm);
+    RtFormInvalidate(MainForm);
 
     if (SystemPrefsSave(&prefs)) {
         set_status("Settings saved to XTOS.CFG");
@@ -167,7 +166,7 @@ static void save_selected(void)
 
 static void ControlPanelHandleEvent(Event *event)
 {
-    int action;
+    FormAction action;
 
     if (event->type == EVENT_KEYDOWN && event->key == XTOS_KEY_ALT_Q) {
         AppQuit();
@@ -175,13 +174,15 @@ static void ControlPanelHandleEvent(Event *event)
                (event->key == 's' || event->key == 'S')) {
         save_selected();
     } else {
-        action = FormHandleEvent(&MainForm, event);
+        RtFormDispatch(MainForm, event, &action);
 
-        if (action == ACTION_APPLY) {
+        if (action.type == RT_FORM_ACTION_BUTTON &&
+            action.control_id == CONTROL_APPLY_BUTTON) {
             apply_selected();
-        } else if (action == ACTION_SAVE) {
+        } else if (action.type == RT_FORM_ACTION_BUTTON &&
+                   action.control_id == CONTROL_SAVE_BUTTON) {
             save_selected();
-        } else if (action == FORM_ACTION_CLOSE) {
+        } else if (action.type == RT_FORM_ACTION_CLOSE) {
             AppQuit();
         }
     }
@@ -189,12 +190,12 @@ static void ControlPanelHandleEvent(Event *event)
 
 static void ControlPanelDraw(void)
 {
-    FormDraw(&MainForm);
+    RtFormDraw(MainForm);
 }
 
 static void ControlPanelShutdown(void)
 {
-    DisplayShutdown();
+    RtFormDestroy(MainForm);
 }
 
 int main(void)

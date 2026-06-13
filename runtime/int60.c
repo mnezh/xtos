@@ -262,6 +262,54 @@ u16 XtosInt60Dispatch(XtosPb XTOS_FAR *pb)
         status = XtosInt60CallResident(pb);
         break;
 
+    case XTOS_OP_FORM_CREATE:
+        if (pb->int_in == 0 || pb->int_out == 0 || pb->addr_in == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_FORM_DESTROY:
+    case XTOS_OP_FORM_DRAW:
+    case XTOS_OP_FORM_INVALIDATE:
+        if (pb->int_in == 0 || pb->int_out == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_FORM_ADD_LABEL:
+    case XTOS_OP_FORM_ADD_BUTTON:
+    case XTOS_OP_FORM_SET_LIST_ITEM:
+    case XTOS_OP_FORM_SET_LABEL_TEXT:
+        if (pb->int_in == 0 || pb->int_out == 0 || pb->addr_in == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_FORM_ADD_LIST:
+    case XTOS_OP_FORM_LIST_SELECTED:
+    case XTOS_OP_FORM_LIST_SET_SELECTED:
+        if (pb->int_in == 0 || pb->int_out == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
+    case XTOS_OP_FORM_DISPATCH:
+        if (pb->int_in == 0 || pb->int_out == 0 ||
+            pb->addr_in == 0 || pb->addr_out == 0) {
+            status = XTOS_RESULT_BAD_PARAMETER;
+            break;
+        }
+        status = XtosInt60CallResident(pb);
+        break;
+
     case XTOS_OP_UNINSTALL:
         if (pb->int_out == 0) {
             status = XTOS_RESULT_BAD_PARAMETER;

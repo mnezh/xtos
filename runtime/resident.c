@@ -12,7 +12,7 @@ int main(void)
     XtosInt60Install();
     XTOS_LOG_PREFIX("[RT]", "resident_install");
 
-    /* Keep the first 64 KiB allocation resident for the Phase 1A TSR. */
-    XtosDosStayResident(0x1000);
+    /* Keep enough paragraphs resident for the growing Phase 1B runtime. */
+    XtosDosStayResident(0x1400);
     return 0;
 }

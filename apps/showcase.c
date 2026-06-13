@@ -1,21 +1,19 @@
 #include "xtos/app.h"
-#include "xtos/display.h"
 #include "xtos/event.h"
 #include "xtos/ui/canvas.h"
 #include "xtos/ui/font.h"
-#include "xtos/ui/form.h"
+#include "xtos/ui/layout.h"
+#include "xtos/ui/runtime_form.h"
 
 #define ACTION_RESET 1
 #define ACTION_APPROVE 2
+#define CONTROL_FRUIT_LIST 10
+#define CONTROL_CHEESE_LIST 11
+#define CONTROL_STATUS_LABEL 12
+#define CONTROL_FRUIT_LABEL 13
+#define CONTROL_CHEESE_LABEL 14
 
-static Form MainForm;
-static List FruitList;
-static List CheeseList;
-static Label FruitLabel;
-static Label CheeseLabel;
-static Label StatusLabel;
-static Button ResetButton;
-static Button ApproveButton;
+static FormId MainForm;
 static char status_text[80];
 
 static const char *fruits[] = {
@@ -58,13 +56,15 @@ static void update_status_label(void)
     cursor = status_text;
     end = status_text + sizeof(status_text) - 1;
 
-    append_text(&cursor, end, fruits[ListSelected(&FruitList)]);
+    append_text(&cursor, end,
+                fruits[RtFormListSelected(MainForm, CONTROL_FRUIT_LIST)]);
     append_text(&cursor, end, " and ");
-    append_text(&cursor, end, cheeses[ListSelected(&CheeseList)]);
+    append_text(&cursor, end,
+                cheeses[RtFormListSelected(MainForm, CONTROL_CHEESE_LIST)]);
     append_text(&cursor, end, ", yum!");
     *cursor = 0;
 
-    LabelSetText(&StatusLabel, status_text);
+    RtFormSetLabelText(MainForm, CONTROL_STATUS_LABEL, status_text);
 }
 
 static void ShowcaseInit(void)
@@ -75,62 +75,63 @@ static void ShowcaseInit(void)
     approve_right = button_right_for(7, "Approve");
     reset_left = (u16)(approve_right + UI_GAP + 1);
 
-    FormInit(&MainForm, "Widget Showcase", FontGet(FONT_SYSTEM));
-    LabelInit(&FruitLabel, 9, 6, FontGet(FONT_SMALL), "Fruits",
-              CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&CheeseLabel, 129, 6, FontGet(FONT_SMALL), "Cheese",
-              CANVAS_PRIMARY_FOREGROUND);
-    LabelInit(&StatusLabel, 7, 176, FontGet(FONT_SMALL), "",
-              CANVAS_EXTRA_1_ON_BACKGROUND);
+    MainForm = RtFormCreate("Widget Showcase", FONT_SYSTEM);
+    if (MainForm == RT_FORM_INVALID) {
+        AppQuit();
+        return;
+    }
 
-    ListInit(&FruitList, 7, 14, 104, FontGet(FONT_SMALL), fruits, 4);
-    ListInit(&CheeseList, 127, 14, 144, FontGet(FONT_SMALL), cheeses, 6);
-    ListSetSelected(&FruitList, 0);
-    ListSetSelected(&CheeseList, 1);
+    RtFormAddLabel(MainForm, CONTROL_FRUIT_LABEL, 9, 6, FONT_SMALL,
+                   CANVAS_PRIMARY_FOREGROUND, "Fruits");
+    RtFormAddLabel(MainForm, CONTROL_CHEESE_LABEL, 129, 6, FONT_SMALL,
+                   CANVAS_PRIMARY_FOREGROUND, "Cheese");
+    RtFormAddLabel(MainForm, CONTROL_STATUS_LABEL, 7, 176, FONT_SMALL,
+                   CANVAS_EXTRA_1_ON_BACKGROUND, "");
 
-    ButtonInit(&ApproveButton, ACTION_APPROVE, 7, 158, approve_right, 170,
-               FontGet(FONT_SMALL), "Approve");
-    ButtonInit(&ResetButton, ACTION_RESET, reset_left, 158,
-               button_right_for(reset_left, "Reset"), 170,
-               FontGet(FONT_SMALL), "Reset");
+    RtFormAddList(MainForm, CONTROL_FRUIT_LIST, 7, 14, 104, FONT_SMALL,
+                  fruits, 4);
+    RtFormAddList(MainForm, CONTROL_CHEESE_LIST, 127, 14, 144, FONT_SMALL,
+                  cheeses, 6);
+    RtFormListSetSelected(MainForm, CONTROL_FRUIT_LIST, 0);
+    RtFormListSetSelected(MainForm, CONTROL_CHEESE_LIST, 1);
 
-    FormAddLabel(&MainForm, &FruitLabel);
-    FormAddLabel(&MainForm, &CheeseLabel);
-    FormAddLabel(&MainForm, &StatusLabel);
-    FormAddList(&MainForm, &FruitList);
-    FormAddList(&MainForm, &CheeseList);
-    FormAddButton(&MainForm, &ResetButton);
-    FormAddButton(&MainForm, &ApproveButton);
+    RtFormAddButton(MainForm, ACTION_APPROVE, 7, 158, approve_right, 170,
+                    FONT_SMALL, "Approve");
+    RtFormAddButton(MainForm, ACTION_RESET, reset_left, 158,
+                    button_right_for(reset_left, "Reset"), 170,
+                    FONT_SMALL, "Reset");
 }
 
 static void ShowcaseHandleEvent(Event *event)
 {
-    int action;
+    FormAction action;
 
     if (event->type == EVENT_KEYDOWN && event->key == XTOS_KEY_ALT_Q) {
         AppQuit();
         return;
     }
 
-    action = FormHandleEvent(&MainForm, event);
+    RtFormDispatch(MainForm, event, &action);
 
-    if (action == ACTION_RESET) {
-        LabelSetText(&StatusLabel, "");
-    } else if (action == ACTION_APPROVE) {
+    if (action.type == RT_FORM_ACTION_BUTTON &&
+        action.control_id == ACTION_RESET) {
+        RtFormSetLabelText(MainForm, CONTROL_STATUS_LABEL, "");
+    } else if (action.type == RT_FORM_ACTION_BUTTON &&
+               action.control_id == ACTION_APPROVE) {
         update_status_label();
-    } else if (action == FORM_ACTION_CLOSE) {
+    } else if (action.type == RT_FORM_ACTION_CLOSE) {
         AppQuit();
     }
 }
 
 static void ShowcaseDraw(void)
 {
-    FormDraw(&MainForm);
+    RtFormDraw(MainForm);
 }
 
 static void ShowcaseShutdown(void)
 {
-    DisplayShutdown();
+    RtFormDestroy(MainForm);
 }
 
 int main(void)

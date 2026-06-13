@@ -254,8 +254,10 @@ Current Phase 1B orchestration skeleton:
 The resident runtime currently proves DOS TSR orchestration and owns Display
 mode/palette, SystemPrefs, Canvas drawing, text rendering, built-in system
 fonts, font metadata, event queue, keyboard polling, mouse polling, and cursor
-ownership. Screenshot, Forms, widgets, invalidation, custom views, and the app
-loop still remain transitional/app-local.
+ownership. Phase 1B has also started a runtime-owned Forms prototype for
+launcher and Showcase standard controls. Screenshot, legacy Forms/widgets, invalidation, custom
+views, and the app loop still remain transitional/app-local where not yet
+migrated.
 
 The launcher is a normal XTOS application. It does not DOS EXEC child
 processes itself. It records the desired next executable in the resident
@@ -318,6 +320,20 @@ does not call back into the app and does not retain app event pointers.
 Forms, Labels, Lists, Buttons, Views, invalidation, custom views, and
 application state remain app-local. These objects contain focus state, app
 strings, callback function pointers, and app-owned data.
+
+Phase 1B exception: `launcher.exe`, `showcase.exe`, and `control.exe` now use
+resident-owned `RtForm*` handles for standard controls. The resident runtime
+owns live labels, buttons, and lists; draws them; tracks focus, list selection,
+and button press state; hit-tests mouse events; handles list up/down keys; and
+returns semantic button/list/close actions. Construction strings are copied
+into resident storage; no app pointers are retained. Label text updates use
+fixed resident per-label buffers. Dispatch only invalidates the app when visual
+state or semantic action state changes, so mouse movement alone does not force
+a full redraw. Runtime Forms now track static chrome dirty state, per-control
+dirty state, and per-list row dirty state, so `RtFormDraw()` redraws only
+changed labels, buttons, lists, or rows after the initial full draw.
+`RtFormInvalidate()` forces a complete resident form redraw after display
+resets such as Control Panel preference apply/save.
 
 Remaining migration risks:
 
@@ -420,7 +436,7 @@ Resident runtime owns:
 Applications own:
 
 - `AppRun()` and lifecycle callback dispatch
-- Forms, Labels, Lists, Buttons, and Views
+- legacy Forms, Labels, Lists, Buttons, and Views
 - invalidation
 - application state, strings, and business logic
 - custom view callbacks
@@ -428,12 +444,12 @@ Applications own:
 Current binary size snapshot:
 
 ```text
-runtime.exe   64048
-launcher.exe  43920
-font.exe      44496
-control.exe   44656
-showcase.exe  44256
-smoke.exe     44592
+runtime.exe   70960
+launcher.exe  45328
+font.exe      46000
+control.exe   46048
+showcase.exe  45632
+smoke.exe     46096
 ```
 
 The app binaries no longer link built-in font data, Canvas/Text draw backends,
@@ -442,19 +458,18 @@ small public API stubs and app-local UI/lifecycle code.
 
 ---
 
-# 15. Deferred to Phase 1B/2
+# 15. Deferred to Later Phase 1B/2
 
 Deferred intentionally:
 
-- runtime-owned Forms/widgets
-- launcher shell and application switching
 - application loading/unloading policy
 - resource compiler or resource package format
 - custom executable formats
+- runtime-owned custom views
 - app-local custom views policy beyond the current callback boundary
 
-Runtime-owned Forms and custom views would require retained app state or
-runtime-to-app callbacks, which Phase 1A explicitly avoids.
+Runtime-owned custom views would require retained app state or runtime-to-app
+callbacks, which the current migration still avoids.
 
 ---
 
@@ -472,7 +487,7 @@ Implemented Phase 1B pieces:
 
 - `xtos.com` with no argument runs `launcher.exe`.
 - `xtos.com app.exe` still runs a single app directly for development.
-- `launcher.exe` is a normal XTOS app using Forms/widgets.
+- `launcher.exe` is a normal XTOS app using runtime-owned Forms/widgets.
 - Public app API `ExecRequest(const char *path)` records a desired next
   executable in resident runtime state.
 - `xtos.com` reads and clears the next-app request after each child exits.
@@ -510,8 +525,8 @@ Runtime uninstall contract:
 - Resident memory release is not attempted yet; "uninstall ok" currently means
   "INT 60h vector restored safely".
 
-Non-goals remain: multitasking, task switching, process manager, runtime-owned
-forms, resources, dynamic discovery, executable metadata, and icons.
+Non-goals remain: multitasking, task switching, process manager, resources,
+dynamic discovery, executable metadata, and icons.
 
 ---
 
@@ -535,7 +550,7 @@ Phase 1A reached this state when:
 - `XTOS.LOG` contains deterministic `[TEST]` smoke markers
 - existing apps still build and run through `xtos.com`
 - resident runtime owns hardware/input/display/rendering services
-- Forms/widgets remain direct because they own app state and callbacks
+- legacy Forms/widgets remain direct because they own app state and callbacks
 
 ---
 

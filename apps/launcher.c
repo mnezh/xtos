@@ -3,19 +3,15 @@
 #include "xtos/exec.h"
 #include "xtos/ui/canvas.h"
 #include "xtos/ui/font.h"
-#include "xtos/ui/form.h"
+#include "xtos/ui/layout.h"
+#include "xtos/ui/runtime_form.h"
 
 #define ACTION_CONTROL 1
 #define ACTION_SHOWCASE 2
 #define ACTION_FONT 3
 #define ACTION_EXIT 4
 
-static Form MainForm;
-static Label TitleLabel;
-static Button ControlButton;
-static Button ShowcaseButton;
-static Button FontButton;
-static Button ExitButton;
+static FormId MainForm;
 
 static u16 button_right_for(u16 left, const char *text)
 {
@@ -33,55 +29,63 @@ static void launch_and_quit(const char *path)
 
 static void LauncherInit(void)
 {
-    FormInit(&MainForm, "XTOS Launcher", FontGet(FONT_SYSTEM));
-    LabelInit(&TitleLabel, 9, 8, FontGet(FONT_SMALL), "Choose an app",
-              CANVAS_PRIMARY_FOREGROUND);
+    MainForm = RtFormCreate("XTOS Launcher", FONT_SYSTEM);
+    if (MainForm == RT_FORM_INVALID) {
+        AppQuit();
+        return;
+    }
 
-    ButtonInit(&ControlButton, ACTION_CONTROL, 9, 28,
-               button_right_for(9, "Control Panel"), 40,
-               FontGet(FONT_SMALL), "Control Panel");
-    ButtonInit(&ShowcaseButton, ACTION_SHOWCASE, 9, 48,
-               button_right_for(9, "Showcase"), 60,
-               FontGet(FONT_SMALL), "Showcase");
-    ButtonInit(&FontButton, ACTION_FONT, 9, 68,
-               button_right_for(9, "Font Viewer"), 80,
-               FontGet(FONT_SMALL), "Font Viewer");
-    ButtonInit(&ExitButton, ACTION_EXIT, 9, 158,
-               button_right_for(9, "Exit XTOS"), 170,
-               FontGet(FONT_SMALL), "Exit XTOS");
-
-    FormAddLabel(&MainForm, &TitleLabel);
-    FormAddButton(&MainForm, &ControlButton);
-    FormAddButton(&MainForm, &ShowcaseButton);
-    FormAddButton(&MainForm, &FontButton);
-    FormAddButton(&MainForm, &ExitButton);
+    RtFormAddLabel(MainForm, 10, 9, 8, FONT_SMALL,
+                   CANVAS_PRIMARY_FOREGROUND, "Choose an app");
+    RtFormAddButton(MainForm, ACTION_CONTROL, 9, 28,
+                    button_right_for(9, "Control Panel"), 40,
+                    FONT_SMALL, "Control Panel");
+    RtFormAddButton(MainForm, ACTION_SHOWCASE, 9, 48,
+                    button_right_for(9, "Showcase"), 60,
+                    FONT_SMALL, "Showcase");
+    RtFormAddButton(MainForm, ACTION_FONT, 9, 68,
+                    button_right_for(9, "Font Viewer"), 80,
+                    FONT_SMALL, "Font Viewer");
+    RtFormAddButton(MainForm, ACTION_EXIT, 9, 158,
+                    button_right_for(9, "Exit XTOS"), 170,
+                    FONT_SMALL, "Exit XTOS");
 }
 
 static void LauncherHandleEvent(Event *event)
 {
-    int action;
+    FormAction action;
 
     if (event->type == EVENT_KEYDOWN && event->key == XTOS_KEY_ALT_Q) {
         AppQuit();
         return;
     }
 
-    action = FormHandleEvent(&MainForm, event);
+    RtFormDispatch(MainForm, event, &action);
 
-    if (action == ACTION_CONTROL) {
+    if (action.type == RT_FORM_ACTION_BUTTON &&
+        action.control_id == ACTION_CONTROL) {
         launch_and_quit("control.exe");
-    } else if (action == ACTION_SHOWCASE) {
+    } else if (action.type == RT_FORM_ACTION_BUTTON &&
+               action.control_id == ACTION_SHOWCASE) {
         launch_and_quit("showcase.exe");
-    } else if (action == ACTION_FONT) {
+    } else if (action.type == RT_FORM_ACTION_BUTTON &&
+               action.control_id == ACTION_FONT) {
         launch_and_quit("font.exe");
-    } else if (action == ACTION_EXIT || action == FORM_ACTION_CLOSE) {
+    } else if ((action.type == RT_FORM_ACTION_BUTTON &&
+                action.control_id == ACTION_EXIT) ||
+               action.type == RT_FORM_ACTION_CLOSE) {
         AppQuit();
     }
 }
 
 static void LauncherDraw(void)
 {
-    FormDraw(&MainForm);
+    RtFormDraw(MainForm);
+}
+
+static void LauncherShutdown(void)
+{
+    RtFormDestroy(MainForm);
 }
 
 int main(void)
@@ -91,7 +95,7 @@ int main(void)
     LauncherApp.Init = LauncherInit;
     LauncherApp.HandleEvent = LauncherHandleEvent;
     LauncherApp.Draw = LauncherDraw;
-    LauncherApp.Shutdown = 0;
+    LauncherApp.Shutdown = LauncherShutdown;
     LauncherApp.first_draw_screenshot_path = "launcher.cga";
 
     return AppRun(&LauncherApp);
